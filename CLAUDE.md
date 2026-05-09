@@ -31,6 +31,7 @@ finance_tracker/
 ├── SPEC.md             # full specification
 ├── PROGRESS.md         # rolling progress log
 ├── config.py           # user-owned config (DB path, defaults)
+├── example_config.py   # example config (mimics user config, hiding information so it can be pushed to git)
 ├── requirements.txt
 ├── app.py              # Streamlit entry point (Overview / landing page)
 ├── pages/              # Streamlit multi-page directory
