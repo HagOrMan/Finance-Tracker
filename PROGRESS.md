@@ -13,14 +13,21 @@ Rolling log of what's been built, what's in progress, and what's next. **Update 
 
 ## Decisions
 
-_Record one-time architectural decisions here so future sessions don't re-debate them._
-
-- [ ] Plotting library: **TBD** — pick on first chart task and record it here.
-- [ ] Category sort order for color mapping: alphabetical (per spec default).
+- [x] **Plotting library: Plotly** — chosen for native hover tooltips required by the daily stacked bar chart.
+- [x] Category sort order for color mapping: alphabetical.
+- [x] **Savings formula confirmed by user (2026-05-09)**: `price` in the DB is post-discount. Formula is `price = (original - discount) * (1 - discount_percentage/100)`. Therefore:
+  - Savings from flat discount = `discount`
+  - Savings from percentage discount = `price * discount_percentage / (100 - discount_percentage)`
+  - Total savings per receipt = sum of both.
 
 ## Done
 
-_Empty — nothing built yet._
+- **2026-05-09** — Full initial build: all 10 backlog items completed in one session.
+  - `requirements.txt` (streamlit, pandas, plotly)
+  - `finance_tracker/` package: `data.py`, `colors.py`, `filters.py`, `charts.py`
+  - `app.py` (Overview), `pages/1_Daily.py`, `pages/2_Categories.py`, `pages/3_Savings.py`
+  - Filter bar persists in session state; Refresh button clears cache.
+  - Net-paid toggle wired through all pages and charts.
 
 ## In progress
 
@@ -28,28 +35,17 @@ _Empty._
 
 ## Backlog
 
-Rough order of attack. Adjust if dependencies suggest otherwise.
-
-1. **Project scaffold** — `requirements.txt`, package skeleton (`finance_tracker/`), empty page files, `app.py` boots.
-2. **Data layer** (`finance_tracker/data.py`) — `load_receipts`, `load_disbursements`, `load_merged_receipts`, with `@st.cache_data` and mtime-based invalidation. Reads `config.DB_PATH`.
-3. **Color mapping** (`finance_tracker/colors.py`) — `get_category_colors()` returning a stable dict.
-4. **Filter component** (`finance_tracker/filters.py`) — horizontal filter bar, session-state-backed, returns a Filters object; plus `apply_filters(df, filters)`.
-5. **Net-paid toggle** — wired into the filter bar, persisted in session state.
-6. **Refresh button** — clears `st.cache_data`, reruns.
-7. **Overview page** (`app.py`) — KPIs, recent receipts table, mini per-day bar chart.
-8. **Daily page** (`pages/1_Daily.py`) — stacked bar chart with hover tooltips + table.
-9. **Categories page** (`pages/2_Categories.py`) — pie chart + sum/mean toggle + summary table.
-10. **Savings page** (`pages/3_Savings.py`) — savings KPI, savings over time, savings by category, spend extrapolation.
+_All items complete._
 
 ## Follow-ups
 
-_Items noticed during implementation that are out of scope for the current task._
-
-- [ ] Confirm with user: does `receipts.price` represent the pre-discount or post-discount amount? Affects how `discount_percentage` is converted to a savings dollar amount on the Savings page. (See SPEC §6.4.)
 - [ ] Editing UI (deferred — read-only for now per CLAUDE.md).
+- [ ] Consider adding a `pages/4_Disbursements.py` for standalone disbursements (gifts, unlinked income) if the user wants to view those separately.
 
 ## Notes / gotchas
 
 - DB is at the path in `config.py`. Don't hardcode it elsewhere.
-- Disbursements with `refunded_from_receipt = NULL` exist and must NOT subtract from any receipt's `actual_price`.
-- Discounts on receipts can be either `discount` (flat) or `discount_percentage` (percent) — both can be 0; "has discount" means either is non-zero.
+- Disbursements with `refunded_from_receipt = NULL` must NOT subtract from any receipt's `actual_price` — only linked disbursements are summed as refunds.
+- Discounts: `discount` is flat, `discount_percentage` is percent. `price` in the DB is already post-discount.
+- Savings calculation: `discount + price * discount_percentage / (100 - discount_percentage)`. Edge case: `discount_percentage = 100` is guarded (uses full `price` as savings).
+- Color palette: `plotly.colors.qualitative.Dark24` via `finance_tracker/colors.py`.
