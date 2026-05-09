@@ -46,13 +46,32 @@ st.plotly_chart(fig, width="stretch")
 
 st.divider()
 st.subheader("Summary by category")
-total_all = df[pcol].sum()
+
+tbl_cats = sorted(df["category"].dropna().unique().tolist())
+tc1, tc2 = st.columns([3, 4])
+with tc1:
+    sel_cats = st.multiselect("Filter by category", tbl_cats, key="tbl_ct_cat")
+with tc2:
+    store_opts = sorted(df["store"].dropna().unique().tolist())
+    sel_stores = st.multiselect(
+        "Filter by store (affects totals)", store_opts, key="tbl_ct_store"
+    )
+
+tbl_df = df.copy()
+if sel_cats:
+    tbl_df = tbl_df[tbl_df["category"].isin(sel_cats)]
+if sel_stores:
+    tbl_df = tbl_df[tbl_df["store"].isin(sel_stores)]
+
+total_all = tbl_df[pcol].sum()
 summary = (
-    df.groupby("category")[pcol]
+    tbl_df.groupby("category")[pcol]
     .agg(total="sum", mean="mean", count="count")
     .reset_index()
 )
-summary["% of total"] = (summary["total"] / total_all * 100).round(1)
+summary["% of total"] = (
+    (summary["total"] / total_all * 100).round(1) if total_all > 0 else 0
+)
 summary = summary.sort_values("total", ascending=False)
 summary.columns = [
     "Category",

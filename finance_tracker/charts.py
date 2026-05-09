@@ -168,8 +168,8 @@ def cumulative_spend_with_extrapolation(
     df: pd.DataFrame,
     price_col: str,
     forward_days: int = 30,
+    avg_per_day: float | None = None,
 ) -> go.Figure:
-    import numpy as np
     from datetime import timedelta
 
     by_day = (
@@ -181,7 +181,8 @@ def cumulative_spend_with_extrapolation(
     )
     by_day["cumulative"] = by_day["amount"].cumsum()
 
-    avg_per_day = by_day["amount"].mean()
+    if avg_per_day is None:
+        avg_per_day = by_day["amount"].mean()
     last_day = by_day["day"].max()
     last_cum = by_day["cumulative"].max()
 

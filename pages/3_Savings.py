@@ -104,6 +104,6 @@ proj = pd.DataFrame(
 st.table(proj)
 
 fig3 = charts.cumulative_spend_with_extrapolation(
-    df, pcol, forward_days=config.EXTRAPOLATION_FORWARD_DAYS
+    df, pcol, forward_days=config.EXTRAPOLATION_FORWARD_DAYS, avg_per_day=avg_per_day
 )
 st.plotly_chart(fig3, width="stretch")

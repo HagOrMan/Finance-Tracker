@@ -25,7 +25,7 @@ Rolling log of what's been built, what's in progress, and what's next. **Update 
 - **2026-05-09** — Full initial build: all 10 backlog items completed in one session.
   - `requirements.txt` (streamlit, pandas, plotly)
   - `finance_tracker/` package: `data.py`, `colors.py`, `filters.py`, `charts.py`
-  - `app.py` (Overview), `pages/1_Daily.py`, `pages/2_Categories.py`, `pages/3_Savings.py`
+  - `app.py` (Overview), `pages/1_Daily.py`, `pages/2_Categories.py`, `pages/3_Savings.py`, `pages/4_Disbursements.py`
   - Filter bar persists in session state; Refresh button clears cache.
   - Net-paid toggle wired through all pages and charts.
 
@@ -40,7 +40,6 @@ _All items complete._
 ## Follow-ups
 
 - [ ] Editing UI (deferred — read-only for now per CLAUDE.md).
-- [ ] Consider adding a `pages/4_Disbursements.py` for standalone disbursements (gifts, unlinked income) if the user wants to view those separately.
 
 ## Notes / gotchas
 

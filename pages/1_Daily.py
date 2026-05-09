@@ -42,6 +42,19 @@ st.plotly_chart(fig, width="stretch")
 
 st.divider()
 st.subheader("Receipts")
+
+tbl_cats = sorted(df["category"].dropna().unique().tolist())
+tbl_stores = sorted(df["store"].dropna().unique().tolist())
+tc1, tc2, tc3 = st.columns([2, 2, 3])
+with tc1:
+    sel_cats = st.multiselect("Filter by category", tbl_cats, key="tbl_dy_cat")
+with tc2:
+    sel_stores = st.multiselect("Filter by store", tbl_stores, key="tbl_dy_store")
+with tc3:
+    note_search = st.text_input(
+        "Search notes", key="tbl_dy_note", placeholder="type to search…"
+    )
+
 display_cols = [
     "date",
     "store",
@@ -53,6 +66,12 @@ display_cols = [
     "discount_percentage",
     "note",
 ]
-table = df.sort_values("date", ascending=False)[display_cols].copy()
-table["date"] = table["date"].dt.strftime("%Y-%m-%d")
-st.dataframe(table, width="stretch")
+tbl = df.sort_values("date", ascending=False)[display_cols].copy()
+if sel_cats:
+    tbl = tbl[tbl["category"].isin(sel_cats)]
+if sel_stores:
+    tbl = tbl[tbl["store"].isin(sel_stores)]
+if note_search:
+    tbl = tbl[tbl["note"].fillna("").str.contains(note_search, case=False, na=False)]
+tbl["date"] = tbl["date"].dt.strftime("%Y-%m-%d")
+st.dataframe(tbl, width="stretch")
