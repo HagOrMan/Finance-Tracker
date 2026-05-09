@@ -55,7 +55,10 @@ def render_filter_bar(
     with cols[0]:
         date_range = st.date_input(
             "Date range",
-            value=(st.session_state["filter_start_date"], st.session_state["filter_end_date"]),
+            value=(
+                st.session_state["filter_start_date"],
+                st.session_state["filter_end_date"],
+            ),
             key="_date_input",
         )
         if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
@@ -126,9 +129,8 @@ def apply_filters(df: pd.DataFrame, filters: Filters) -> pd.DataFrame:
     """Apply date/category/store/discount filters to a receipts DataFrame."""
     df = df.copy()
 
-    mask = (
-        (df["date"].dt.date >= filters.start_date)
-        & (df["date"].dt.date <= filters.end_date)
+    mask = (df["date"].dt.date >= filters.start_date) & (
+        df["date"].dt.date <= filters.end_date
     )
     df = df[mask]
 

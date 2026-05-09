@@ -6,10 +6,19 @@ import streamlit as st
 import config
 from finance_tracker.colors import get_category_colors
 from finance_tracker.data import DBError, get_mtime, load_merged_receipts
-from finance_tracker.filters import apply_filters, price_col, price_label, render_filter_bar
+from finance_tracker.filters import (
+    apply_filters,
+    price_col,
+    price_label,
+    render_filter_bar,
+)
 from finance_tracker import charts
 
-st.set_page_config(page_title="Categories | " + config.APP_TITLE, page_icon=config.APP_ICON, layout="wide")
+st.set_page_config(
+    page_title="Categories | " + config.APP_TITLE,
+    page_icon=config.APP_ICON,
+    layout="wide",
+)
 st.title("🗂️ Categories")
 
 try:
@@ -33,7 +42,7 @@ color_map = get_category_colors(tuple(sorted(df_all["category"].dropna().unique(
 mode = st.radio("Chart mode", ["Sum", "Mean"], horizontal=True)
 
 fig = charts.category_pie(df, pcol, color_map, mode=mode)
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")
 
 st.divider()
 st.subheader("Summary by category")
@@ -45,5 +54,11 @@ summary = (
 )
 summary["% of total"] = (summary["total"] / total_all * 100).round(1)
 summary = summary.sort_values("total", ascending=False)
-summary.columns = ["Category", f"Total ({plabel})", f"Mean ({plabel})", "Count", "% of total"]
-st.dataframe(summary, use_container_width=True, hide_index=True)
+summary.columns = [
+    "Category",
+    f"Total ({plabel})",
+    f"Mean ({plabel})",
+    "Count",
+    "% of total",
+]
+st.dataframe(summary, width="stretch", hide_index=True)

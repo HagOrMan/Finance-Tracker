@@ -27,7 +27,11 @@ def daily_stacked_bar(
         show_legend = cat not in added_to_legend
         added_to_legend.add(cat)
 
-        note_text = f"<br>Note: {row['note']}" if pd.notna(row.get("note")) and row.get("note") else ""
+        note_text = (
+            f"<br>Note: {row['note']}"
+            if pd.notna(row.get("note")) and row.get("note")
+            else ""
+        )
         fig.add_trace(
             go.Bar(
                 x=[row["date_str"]],
@@ -117,12 +121,7 @@ def savings_over_time(
     date_range_days: int = 30,
 ) -> go.Figure:
     freq = "D" if date_range_days <= 60 else "W"
-    by_period = (
-        df.set_index("date")[savings_col]
-        .resample(freq)
-        .sum()
-        .reset_index()
-    )
+    by_period = df.set_index("date")[savings_col].resample(freq).sum().reset_index()
     by_period["date_str"] = by_period["date"].dt.strftime("%Y-%m-%d")
 
     fig = go.Figure(

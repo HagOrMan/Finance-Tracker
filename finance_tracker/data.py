@@ -73,8 +73,7 @@ def load_merged_receipts(_mtime: float) -> pd.DataFrame:
     )
 
     df = (
-        receipts
-        .merge(refunds, how="left", left_on="id", right_index=True)
+        receipts.merge(refunds, how="left", left_on="id", right_index=True)
         .rename(columns={"amount": "total_refunded"})
         .assign(total_refunded=lambda d: d["total_refunded"].fillna(0))
         .assign(actual_price=lambda d: d["price"] - d["total_refunded"])

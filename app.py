@@ -5,10 +5,17 @@ import streamlit as st
 import config
 from finance_tracker.colors import get_category_colors
 from finance_tracker.data import DBError, get_mtime, load_merged_receipts
-from finance_tracker.filters import apply_filters, price_col, price_label, render_filter_bar
+from finance_tracker.filters import (
+    apply_filters,
+    price_col,
+    price_label,
+    render_filter_bar,
+)
 from finance_tracker import charts
 
-st.set_page_config(page_title=config.APP_TITLE, page_icon=config.APP_ICON, layout="wide")
+st.set_page_config(
+    page_title=config.APP_TITLE, page_icon=config.APP_ICON, layout="wide"
+)
 st.title(f"{config.APP_ICON} {config.APP_TITLE} — Overview")
 
 try:
@@ -46,13 +53,21 @@ st.divider()
 # --- Mini daily bar chart ---
 st.subheader("Spend per day")
 fig = charts.spend_per_day_bar(df, pcol, y_label=plabel)
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")
 
 st.divider()
 
 # --- Recent receipts table ---
 st.subheader("Recent receipts")
-display_cols = ["date", "store", "category", "price", "total_refunded", "actual_price", "note"]
+display_cols = [
+    "date",
+    "store",
+    "category",
+    "price",
+    "total_refunded",
+    "actual_price",
+    "note",
+]
 recent = df.sort_values("date", ascending=False).head(10)[display_cols].copy()
 recent["date"] = recent["date"].dt.strftime("%Y-%m-%d")
-st.dataframe(recent, use_container_width=True)
+st.dataframe(recent, width="stretch")
