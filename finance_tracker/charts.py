@@ -216,3 +216,131 @@ def cumulative_spend_with_extrapolation(
         margin={"t": 30},
     )
     return fig
+
+
+def monthly_stacked_bar(
+    df: pd.DataFrame,
+    price_col: str,
+    color_map: dict[str, str],
+    months: list[str],
+    y_label: str = "Amount ($)",
+) -> go.Figure:
+    """Stacked bar chart: one bar per month, segments aggregated by category."""
+    df = df.copy()
+    df["month_str"] = df["date"].dt.to_period("M").astype(str)
+    agg = df.groupby(["month_str", "category"])[price_col].sum().reset_index()
+
+    categories = sorted(df["category"].unique())
+    fig = go.Figure()
+    for cat in categories:
+        cat_data = agg[agg["category"] == cat].set_index("month_str")
+        y_vals = [
+            float(cat_data.loc[m, price_col]) if m in cat_data.index else 0.0
+            for m in months
+        ]
+        fig.add_trace(
+            go.Bar(
+                x=months,
+                y=y_vals,
+                name=cat,
+                marker_color=color_map.get(cat, "#888"),
+                legendgroup=cat,
+                hovertemplate=(
+                    f"<b>{cat}</b><br>"
+                    "Month: %{x}<br>"
+                    "Amount: $%{y:.2f}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+    fig.update_layout(
+        barmode="stack",
+        xaxis_title="Month",
+        yaxis_title=y_label,
+        xaxis={"categoryorder": "array", "categoryarray": months},
+        legend_title="Category",
+        hovermode="closest",
+        margin={"t": 30},
+    )
+    return fig
+
+
+def monthly_category_line(
+    df: pd.DataFrame,
+    price_col: str,
+    color_map: dict[str, str],
+    months: list[str],
+    y_label: str = "Amount ($)",
+) -> go.Figure:
+    """Line chart: one line per category, x=month, y=spend."""
+    df = df.copy()
+    df["month_str"] = df["date"].dt.to_period("M").astype(str)
+    agg = df.groupby(["month_str", "category"])[price_col].sum().reset_index()
+
+    categories = sorted(df["category"].unique())
+    fig = go.Figure()
+    for cat in categories:
+        cat_data = agg[agg["category"] == cat].set_index("month_str")
+        y_vals = [
+            float(cat_data.loc[m, price_col]) if m in cat_data.index else 0.0
+            for m in months
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=months,
+                y=y_vals,
+                mode="lines+markers",
+                name=cat,
+                line_color=color_map.get(cat, "#888"),
+                hovertemplate=(
+                    f"<b>{cat}</b><br>"
+                    "Month: %{x}<br>"
+                    "Amount: $%{y:.2f}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title=y_label,
+        xaxis={"categoryorder": "array", "categoryarray": months},
+        legend_title="Category",
+        margin={"t": 30},
+    )
+    return fig
+
+
+def monthly_category_heatmap(
+    df: pd.DataFrame,
+    price_col: str,
+    months: list[str],
+    y_label: str = "Amount ($)",
+) -> go.Figure:
+    """Heatmap: categories (rows) × months (columns), cell color = spend."""
+    df = df.copy()
+    df["month_str"] = df["date"].dt.to_period("M").astype(str)
+    agg = df.groupby(["month_str", "category"])[price_col].sum().reset_index()
+
+    pivot = agg.pivot(index="category", columns="month_str", values=price_col).fillna(0.0)
+    for m in months:
+        if m not in pivot.columns:
+            pivot[m] = 0.0
+    pivot = pivot[months]
+    pivot = pivot.loc[pivot.sum(axis=1).sort_values(ascending=False).index]
+
+    fig = go.Figure(
+        go.Heatmap(
+            z=pivot.values.tolist(),
+            x=months,
+            y=pivot.index.tolist(),
+            colorscale="Blues",
+            hovertemplate="<b>%{y}</b><br>Month: %{x}<br>Amount: $%{z:.2f}<extra></extra>",
+            colorbar={"title": {"text": y_label, "side": "right"}},
+        )
+    )
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title="Category",
+        margin={"t": 30},
+    )
+    return fig

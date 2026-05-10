@@ -22,6 +22,8 @@ Rolling log of what's been built, what's in progress, and what's next. **Update 
 
 ## Done
 
+- **2026-05-09** — Monthly breakdown page (`pages/5_Monthly.py`): month multiselect (any months, non-consecutive), KPI row, stacked bar by month+category, per-month receipt tabs, category trend line chart + heatmap. Three new chart functions added to `charts.py`: `monthly_stacked_bar`, `monthly_category_line`, `monthly_category_heatmap`.
+
 - **2026-05-09** — Full initial build: all 10 backlog items completed in one session.
   - `requirements.txt` (streamlit, pandas, plotly)
   - `finance_tracker/` package: `data.py`, `colors.py`, `filters.py`, `charts.py`
