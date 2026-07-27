@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { Database } from "@/types/database";
 import type {
   DataSource,
   Receipt,
@@ -21,7 +22,7 @@ const SCHEMA = "finance_tracker";
  * reached; nothing here checks who is asking.
  */
 export class SupabaseDataSource implements DataSource {
-  constructor(private readonly supabase: SupabaseClient) {}
+  constructor(private readonly supabase: SupabaseClient<Database>) {}
 
   async loadReceipts(): Promise<Receipt[]> {
     const { data, error } = await this.supabase

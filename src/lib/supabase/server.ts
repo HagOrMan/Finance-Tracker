@@ -3,6 +3,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cache } from "react";
 
 import { requireEnv } from "@/lib/env";
+import type { Database } from "@/types/database";
 
 import "server-only";
 
@@ -22,7 +23,7 @@ import "server-only";
 export const createClient = cache(async () => {
   const cookieStore = await cookies();
 
-  return createServerClient(
+  return createServerClient<Database>(
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
     requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     {

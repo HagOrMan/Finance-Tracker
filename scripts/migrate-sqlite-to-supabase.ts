@@ -8,12 +8,19 @@
  * The rows carry no owner column — these are Pattern A tables reachable only
  * by the secret key — so this doesn't need you to have signed in first.
  *
- * Usage:
- *   SQLITE_DB_PATH="C:\path\to\secret_finances.db" \
- *   NEXT_PUBLIC_SUPABASE_URL="https://xxxx.supabase.co" \
- *   SUPABASE_SECRET_KEY="..." \
- *     pnpm migrate:sqlite-to-supabase
+ * Usage — put SQLITE_DB_PATH in .env.local alongside the Supabase keys, then:
+ *
+ *   pnpm migrate:sqlite-to-supabase
+ *
+ * Unlike `next dev`, a bare tsx script does NOT read .env.local, so this file
+ * loads it itself (see loadEnvLocal below). Anything already set in the real
+ * environment wins, so you can still override a single value per-run — but
+ * note the `VAR=value cmd` prefix syntax is bash-only and does nothing in
+ * PowerShell. There, set it first:  $env:SQLITE_DB_PATH = "C:\path\to.db"
  */
+
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import Database from "better-sqlite3";
 import { createClient } from "@supabase/supabase-js";
@@ -23,9 +30,49 @@ import type { Disbursement, Receipt } from "../src/lib/data/types";
 const SCHEMA = "finance_tracker";
 const BATCH_SIZE = 500;
 
+/**
+ * Minimal .env.local reader. Deliberately hand-rolled rather than using
+ * `node:util`'s parseEnv, which needs Node >= 20.12 — this has no version
+ * floor and the parsing rules here are worth being explicit about:
+ *
+ * - split on the FIRST `=` only. Supabase secret keys and JWTs are base64 and
+ *   routinely contain or end with `=`; a naive split would truncate them.
+ * - never overwrite a variable that is already set, so an explicit
+ *   per-run override still takes precedence.
+ */
+function loadEnvLocal(): void {
+  const envPath = resolve(process.cwd(), ".env.local");
+  if (!existsSync(envPath)) return;
+
+  for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim().replace(/^export\s+/, "");
+    if (!line || line.startsWith("#")) continue;
+
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+
+    const key = line.slice(0, eq).trim();
+    if (!key || process.env[key] !== undefined) continue;
+
+    const value = line.slice(eq + 1).trim();
+    // Strip one layer of matching surrounding quotes, if present.
+    process.env[key] =
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+        ? value.slice(1, -1)
+        : value;
+  }
+}
+
 function requireEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
+  if (!value) {
+    throw new Error(
+      `Missing required env var: ${name}. Add it to .env.local in the repo ` +
+        `root, or set it in your shell first ` +
+        `(PowerShell: $env:${name} = "...").`
+    );
+  }
   return value;
 }
 
@@ -36,6 +83,9 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 async function main() {
+  // Must run before the first requireEnv below.
+  loadEnvLocal();
+
   const dbPath = requireEnv("SQLITE_DB_PATH");
   const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
   // New-style `sb_secret_…` key (or the legacy service_role JWT — same

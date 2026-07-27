@@ -1,6 +1,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 import { requireEnv } from "@/lib/env";
+import type { Database } from "@/types/database";
 
 import "server-only";
 
@@ -20,7 +21,7 @@ import "server-only";
  * write session state and can collide with the real user session.
  */
 export function createServiceClient() {
-  return createSupabaseClient(
+  return createSupabaseClient<Database>(
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
     requireEnv("SUPABASE_SECRET_KEY"),
     { auth: { autoRefreshToken: false, persistSession: false } },

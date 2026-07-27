@@ -63,7 +63,9 @@ _Nothing._
 
 ## Needs your attention (auth rework)
 
-- **`src/types/database.ts` was not generated** — it needs `npx supabase gen types typescript --project-id <ref>`, which I can't run. The Supabase clients are therefore untyped (no `<Database>` generic), which is a working state, not a broken import. Add the generic everywhere if you generate it later.
+- **Generated `src/types/database.ts` and wired it in** (you exported it). `<Database>` now flows through `src/lib/supabase/{server,service}.ts` and `SupabaseDataSource`'s constructor. **Keep the whole generated file, including the other apps' `public` tables** — the generator hardcodes `DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]`, so deleting the `public` key silently collapses `Tables`/`TablesInsert`/`TablesUpdate`/`Enums`/`CompositeTypes` to `never` with no error. It isn't an exposure either: TS types are erased at compile time, so `import type { Database }` reaches no bundle. Re-run `npx supabase gen types typescript --project-id <ref> --schema public --schema finance_tracker` after any schema change and take the output verbatim.
+
+- **`.env.local` now loads in the backfill script.** `tsx` doesn't read it the way `next dev` does, which is why the env vars came up missing; the script parses it itself now, splitting on the first `=` only so base64 secret keys survive, and never overwriting a var that's already set. The old docblock also showed bash's `VAR=value cmd` prefix, which silently does nothing in PowerShell — `$env:VAR = "..."` is the equivalent, and is now documented in the script and in the error message.
 - **Schema shape deviates from the guide on purpose.** The guide says "one `public` schema, prefix every table with the app name"; this app uses a dedicated `finance_tracker` schema (`migration.md` §6), which solves the same collision problem more cleanly. Consequence: `finance_tracker` must be in the project's **exposed schemas** API setting or every call 404s. Say the word if you'd rather move to prefixed `public` tables.
 - **`SUPABASE_SECRET_KEY` is now a live credential in the running app,** not just a one-off script input. Set it in Vercel for all three environments, and treat a leak as full data access — it bypasses RLS by design. It is reachable only through `src/lib/supabase/service.ts`, which is `server-only` so a client-component import fails the build rather than shipping the key.
 - **Run `supabase/migrations/finance_tracker_schema.sql`, not `migration.md` §6.** After running it, verify the lockout with the `curl` in §6 of that file — a permission-denied error is the pass condition; an empty array means privileges are open and only RLS is holding.
@@ -80,9 +82,7 @@ These need your Supabase / GCP / Vercel account access, which Claude doesn't hav
 4. Copy `.env.example` → `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL` and **`SUPABASE_SECRET_KEY`** (the app itself needs this one now, not just the script). Leave `OWNER_USER_IDS` blank for now.
 5. `pnpm install`, `pnpm dev`, visit `/login`, sign in with Google. Because the allowlist is empty you'll land back on `/login` with your user id printed — that's the bootstrap path working, not a bug.
 6. Put that UUID in `OWNER_USER_IDS` and restart. You should now reach `/`.
-7. Run the backfill (no user id needed any more):
-   `SQLITE_DB_PATH=... NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SECRET_KEY=... pnpm migrate:sqlite-to-supabase`
-   then run the two `setval(...)` statements it prints, in the Supabase SQL editor.
+7. Add `SQLITE_DB_PATH` to `.env.local`, then run `pnpm migrate:sqlite-to-supabase` (no env prefix, no user id needed) and run the two `setval(...)` statements it prints in the Supabase SQL editor.
 8. Click through all 6 pages + quick-add — none of this has been runtime-tested (Claude can't run `pnpm dev`/`build` under this session's constraints). Report back anything broken.
 9. Deploy to Vercel and mirror **every** env var into Production, Preview *and* Development — `.env.local` is local only, and auth working locally but 401ing on Vercel is almost always this. `DATA_SOURCE`/`SQLITE_DB_PATH` stay unset in production.
 10. Verify in a private window that a protected route 302s to `/login`, and that sign-out clears the session.
