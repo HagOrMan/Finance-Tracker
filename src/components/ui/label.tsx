@@ -14,6 +14,9 @@ function Label({
       data-slot="label"
       className={cn(
         "flex items-center gap-2 text-sm leading-none font-medium select-none",
+        // Only labels bound to a control (`htmlFor` -> `for`) actually click
+        // through to something, so only those get the pointer.
+        "[[for]]:cursor-pointer",
         "group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50",
         "peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
         className

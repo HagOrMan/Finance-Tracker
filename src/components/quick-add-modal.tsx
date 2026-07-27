@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
@@ -127,7 +127,15 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
 
 function ReceiptForm({ onDone }: { onDone: () => void }) {
   const addReceipt = useAddReceipt();
+  const { data: receipts } = useMergedReceipts();
   const [customCategory, setCustomCategory] = useState(false);
+
+  // Store stays free text, but every store already used is offered as a native
+  // autocomplete suggestion so the same shop doesn't end up spelled two ways.
+  const storeSuggestions = useMemo(
+    () => [...new Set((receipts ?? []).map((r) => r.store))].sort(),
+    [receipts],
+  );
 
   const {
     register,
@@ -176,7 +184,19 @@ function ReceiptForm({ onDone }: { onDone: () => void }) {
     <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="r-store">Store</Label>
-        <Input id="r-store" {...register("store")} />
+        <Input
+          id="r-store"
+          list="r-store-suggestions"
+          // Off so the browser's own form history doesn't compete with the
+          // datalist for the same dropdown slot.
+          autoComplete="off"
+          {...register("store")}
+        />
+        <datalist id="r-store-suggestions">
+          {storeSuggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
         {errors.store && <p className="text-xs text-destructive">{errors.store.message}</p>}
       </div>
 
@@ -330,6 +350,11 @@ function DisbursementForm({ onDone }: { onDone: () => void }) {
               type="button"
               variant="outline"
               role="combobox"
+              title={
+                linkedReceipt
+                  ? `${linkedReceipt.date} · ${linkedReceipt.store} · $${linkedReceipt.price.toFixed(2)}`
+                  : "Not linked to a receipt"
+              }
               className="w-full justify-between font-normal"
             >
               <span className="truncate">
@@ -375,7 +400,10 @@ function DisbursementForm({ onDone }: { onDone: () => void }) {
                           refundedFromReceipt === r.id ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      <span className="truncate">
+                      <span
+                        className="truncate"
+                        title={`${r.date} · ${r.store} · $${r.price.toFixed(2)}`}
+                      >
                         {r.date} · {r.store} · ${r.price.toFixed(2)}
                       </span>
                     </CommandItem>

@@ -128,7 +128,7 @@ export function ReceiptsTable({
                   {r.discount_percentage.toFixed(1)}%
                 </TableCell>
               )}
-              <TableCell className="max-w-60 truncate">
+              <TableCell className="max-w-60 truncate" title={r.note ?? ""}>
                 {r.note ?? ""}
               </TableCell>
             </TableRow>

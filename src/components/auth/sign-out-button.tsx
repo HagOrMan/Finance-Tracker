@@ -21,7 +21,9 @@ export function SignOutButton({
       size={size}
       className={iconOnly ? undefined : "w-full"}
       onClick={() => signOut()}
-      aria-label="Sign out"
+      // Only the icon-only variant needs a name; the full one already reads
+      // "Sign out" on screen, and Button mirrors aria-label into a tooltip.
+      aria-label={iconOnly ? "Sign out" : undefined}
     >
       <LogOut />
       {!iconOnly && "Sign out"}

@@ -35,7 +35,10 @@ export function CategoryMonthHeatmap({
         ))}
         {categories.map((cat) => (
           <div key={cat} className="contents">
-            <div className="flex items-center truncate pr-2 text-sm text-foreground">
+            <div
+              title={cat}
+              className="flex items-center truncate pr-2 text-sm text-foreground"
+            >
               {cat}
             </div>
             {months.map((m) => {
