@@ -25,6 +25,7 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -48,6 +49,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   useAddDisbursement,
   useAddReceipt,
+  useDisbursements,
   useMergedReceipts,
 } from "@/hooks/use-finance-data";
 import {
@@ -108,6 +110,10 @@ export function QuickAddButton() {
 }
 
 function QuickAddForm({ onDone }: { onDone: () => void }) {
+  // Lifted above the tabs so the choice survives switching between them —
+  // a bulk-entry session is usually a mix of receipts and disbursements.
+  const [bulk, setBulk] = useState(false);
+
   return (
     <Tabs defaultValue="receipt" className="mt-2">
       <TabsList className="w-full">
@@ -119,16 +125,46 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
         </TabsTrigger>
       </TabsList>
       <TabsContent value="receipt">
-        <ReceiptForm onDone={onDone} />
+        <ReceiptForm onDone={onDone} bulk={bulk} onBulkChange={setBulk} />
       </TabsContent>
       <TabsContent value="disbursement">
-        <DisbursementForm onDone={onDone} />
+        <DisbursementForm onDone={onDone} bulk={bulk} onBulkChange={setBulk} />
       </TabsContent>
     </Tabs>
   );
 }
 
-function ReceiptForm({ onDone }: { onDone: () => void }) {
+/** Props every quick-add tab takes. */
+type FormProps = {
+  onDone: () => void;
+  bulk: boolean;
+  onBulkChange: (value: boolean) => void;
+};
+
+function BulkAddToggle({
+  id,
+  bulk,
+  onBulkChange,
+}: {
+  id: string;
+} & Pick<FormProps, "bulk" | "onBulkChange">) {
+  return (
+    <div className="mt-2 flex items-start gap-2">
+      <Checkbox
+        id={id}
+        checked={bulk}
+        // Radix hands back `boolean | "indeterminate"`; this checkbox never is.
+        onCheckedChange={(checked) => onBulkChange(checked === true)}
+        className="mt-0.5"
+      />
+      <Label htmlFor={id} className="text-xs leading-snug font-normal text-muted-foreground">
+        Keep adding — stay open and leave the fields as they are
+      </Label>
+    </div>
+  );
+}
+
+function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
   const addReceipt = useAddReceipt();
   const { data: receipts } = useMergedReceipts();
   const [customCategory, setCustomCategory] = useState(false);
@@ -168,6 +204,11 @@ function ReceiptForm({ onDone }: { onDone: () => void }) {
     try {
       await addReceipt.mutateAsync(values);
       toast.success(`Receipt added: ${values.store} — $${values.price.toFixed(2)}`);
+      if (bulk) {
+        // Deliberately no `reset` — the point of bulk mode is that the next
+        // receipt is usually a small edit of this one.
+        return;
+      }
       reset({
         store: "",
         category: "",
@@ -268,17 +309,27 @@ function ReceiptForm({ onDone }: { onDone: () => void }) {
         <Input id="r-note" {...register("note")} />
       </div>
 
-      <Button type="submit" disabled={addReceipt.isPending} className="mt-2">
-        {addReceipt.isPending ? "Adding…" : "Add receipt"}
+      <BulkAddToggle id="r-bulk" bulk={bulk} onBulkChange={onBulkChange} />
+
+      <Button type="submit" disabled={addReceipt.isPending} className="mt-1">
+        {addReceipt.isPending ? "Adding…" : bulk ? "Add receipt & keep going" : "Add receipt"}
       </Button>
     </form>
   );
 }
 
-function DisbursementForm({ onDone }: { onDone: () => void }) {
+function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
   const addDisbursement = useAddDisbursement();
   const { data: receipts } = useMergedReceipts();
+  const { data: disbursements } = useDisbursements();
   const [comboOpen, setComboOpen] = useState(false);
+
+  // Same treatment the Store field gets: free text, but every entity already
+  // used is offered so the same payer doesn't end up spelled two ways.
+  const entitySuggestions = useMemo(
+    () => [...new Set((disbursements ?? []).map((d) => d.entity))].sort(),
+    [disbursements],
+  );
 
   const {
     register,
@@ -298,6 +349,7 @@ function DisbursementForm({ onDone }: { onDone: () => void }) {
     },
   });
 
+  const entity = watch("entity");
   const refundedFromReceipt = watch("refunded_from_receipt");
   const linkedReceipt = receipts?.find((r) => r.id === refundedFromReceipt);
 
@@ -305,6 +357,7 @@ function DisbursementForm({ onDone }: { onDone: () => void }) {
     try {
       await addDisbursement.mutateAsync(values);
       toast.success(`Disbursement added: ${values.entity} — $${values.amount.toFixed(2)}`);
+      if (bulk) return;
       reset({
         entity: "",
         amount: 0,
@@ -322,7 +375,13 @@ function DisbursementForm({ onDone }: { onDone: () => void }) {
     <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="d-entity">Entity</Label>
-        <Input id="d-entity" {...register("entity")} />
+        <AutocompleteInput
+          id="d-entity"
+          query={entity}
+          suggestions={entitySuggestions}
+          onPick={(value) => setValue("entity", value, { shouldValidate: true })}
+          {...register("entity")}
+        />
         {errors.entity && <p className="text-xs text-destructive">{errors.entity.message}</p>}
       </div>
 
@@ -416,8 +475,14 @@ function DisbursementForm({ onDone }: { onDone: () => void }) {
         </Popover>
       </div>
 
-      <Button type="submit" disabled={addDisbursement.isPending} className="mt-2">
-        {addDisbursement.isPending ? "Adding…" : "Add disbursement"}
+      <BulkAddToggle id="d-bulk" bulk={bulk} onBulkChange={onBulkChange} />
+
+      <Button type="submit" disabled={addDisbursement.isPending} className="mt-1">
+        {addDisbursement.isPending
+          ? "Adding…"
+          : bulk
+            ? "Add disbursement & keep going"
+            : "Add disbursement"}
       </Button>
     </form>
   );
