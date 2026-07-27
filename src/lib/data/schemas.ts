@@ -22,8 +22,19 @@ export const newDisbursementSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   date_received: isoDate,
   reason: z.string().trim().optional().nullable(),
-  refunded_from_receipt: z.coerce.number().int().positive().optional().nullable(),
+  // Not coerced, unlike the money fields: this one never passes through a text
+  // input. The combobox writes a number (or null) with `setValue`, and the API
+  // reads it off JSON. Coercing would widen the *input* type to `unknown`, and
+  // react-hook-form's `DeepPartial<unknown>` is `{}` — which `null` can't be
+  // assigned to, breaking the form's `defaultValues`.
+  refunded_from_receipt: z.number().int().positive().optional().nullable(),
 });
 
-export type NewReceiptFormValues = z.infer<typeof newReceiptSchema>;
-export type NewDisbursementFormValues = z.infer<typeof newDisbursementSchema>;
+// The form needs both ends of the schema. `z.coerce` means what react-hook-form
+// holds while you type (`Input` — a number field's DOM value is a string) is not
+// what the resolver hands to `onSubmit` (`Values` — coerced, defaults applied),
+// so `useForm` has to be told both: `useForm<Input, unknown, Values>`.
+export type NewReceiptFormInput = z.input<typeof newReceiptSchema>;
+export type NewDisbursementFormInput = z.input<typeof newDisbursementSchema>;
+export type NewReceiptFormValues = z.output<typeof newReceiptSchema>;
+export type NewDisbursementFormValues = z.output<typeof newDisbursementSchema>;

@@ -43,6 +43,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AutocompleteInput } from "@/components/autocomplete-input";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   useAddDisbursement,
@@ -52,7 +53,9 @@ import {
 import {
   newDisbursementSchema,
   newReceiptSchema,
+  type NewDisbursementFormInput,
   type NewDisbursementFormValues,
+  type NewReceiptFormInput,
   type NewReceiptFormValues,
 } from "@/lib/data/schemas";
 import { CATEGORY_OPTIONS } from "@/lib/data/types";
@@ -130,8 +133,8 @@ function ReceiptForm({ onDone }: { onDone: () => void }) {
   const { data: receipts } = useMergedReceipts();
   const [customCategory, setCustomCategory] = useState(false);
 
-  // Store stays free text, but every store already used is offered as a native
-  // autocomplete suggestion so the same shop doesn't end up spelled two ways.
+  // Store stays free text, but every store already used is offered as a
+  // suggestion so the same shop doesn't end up spelled two ways.
   const storeSuggestions = useMemo(
     () => [...new Set((receipts ?? []).map((r) => r.store))].sort(),
     [receipts],
@@ -144,7 +147,7 @@ function ReceiptForm({ onDone }: { onDone: () => void }) {
     setValue,
     formState: { errors },
     reset,
-  } = useForm<NewReceiptFormValues>({
+  } = useForm<NewReceiptFormInput, unknown, NewReceiptFormValues>({
     resolver: zodResolver(newReceiptSchema),
     defaultValues: {
       store: "",
@@ -157,6 +160,7 @@ function ReceiptForm({ onDone }: { onDone: () => void }) {
     },
   });
 
+  const store = watch("store");
   const category = watch("category");
   const isKnownCategory = (CATEGORY_OPTIONS as readonly string[]).includes(category);
 
@@ -184,19 +188,13 @@ function ReceiptForm({ onDone }: { onDone: () => void }) {
     <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="r-store">Store</Label>
-        <Input
+        <AutocompleteInput
           id="r-store"
-          list="r-store-suggestions"
-          // Off so the browser's own form history doesn't compete with the
-          // datalist for the same dropdown slot.
-          autoComplete="off"
+          query={store}
+          suggestions={storeSuggestions}
+          onPick={(value) => setValue("store", value, { shouldValidate: true })}
           {...register("store")}
         />
-        <datalist id="r-store-suggestions">
-          {storeSuggestions.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
         {errors.store && <p className="text-xs text-destructive">{errors.store.message}</p>}
       </div>
 
@@ -204,7 +202,10 @@ function ReceiptForm({ onDone }: { onDone: () => void }) {
         <Label htmlFor="r-category">Category</Label>
         {!customCategory ? (
           <Select
-            value={isKnownCategory ? category : undefined}
+            // "" (not undefined) for "nothing picked yet": Radix shows the
+            // placeholder for both, but undefined makes the Select uncontrolled
+            // until the first pick, which React warns about on the switch.
+            value={isKnownCategory ? category : ""}
             onValueChange={(v) => {
               if (v === "__other__") {
                 setCustomCategory(true);
@@ -286,7 +287,7 @@ function DisbursementForm({ onDone }: { onDone: () => void }) {
     setValue,
     formState: { errors },
     reset,
-  } = useForm<NewDisbursementFormValues>({
+  } = useForm<NewDisbursementFormInput, unknown, NewDisbursementFormValues>({
     resolver: zodResolver(newDisbursementSchema),
     defaultValues: {
       entity: "",
