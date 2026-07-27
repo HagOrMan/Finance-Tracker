@@ -11,10 +11,11 @@ This was migrated from an earlier Streamlit/Python version of the same app. That
 ## How to work in this repo
 
 1. **Always read `PROGRESS.md` first.** It tracks what has been built, what is in progress, and what is next. Update it as you go.
-2. **Read `migration.md` when you need historical "why."** It documents the decisions made during the Streamlit→Next.js rewrite (data layer design, palette derivation, auth approach, known simplifications like the Daily chart's per-category-not-per-receipt aggregation). Don't re-litigate those decisions without a reason.
-3. **Treat `.env.local` as user-owned**, same spirit as the old `config.py`. Never commit it; `.env.example` documents the required keys with no real values.
-4. **Ask before deviating from `migration.md`'s architecture** (data layer abstraction, RLS-based auth, schema shape). Small judgment calls (component naming, file organization within `src/`) are fine to make on your own.
-5. **Keep changes scoped.** Don't refactor unrelated code while implementing a feature. Note follow-ups in `PROGRESS.md` rather than doing them inline.
+2. **Read `FEATURES.md` before touching stores, receipt editing, or subscriptions.** It is the approved design for the next three features (Phase 0 write path → Stores page → CRUD tables → subscriptions), including the schema migrations, route contracts, and the invariants that must not be re-litigated — chiefly *receipts are the ledger of facts; subscriptions generate into them and are never read by the math*.
+3. **Read `migration.md` when you need historical "why."** It documents the decisions made during the Streamlit→Next.js rewrite (data layer design, palette derivation, auth approach, known simplifications like the Daily chart's per-category-not-per-receipt aggregation). Don't re-litigate those decisions without a reason.
+4. **Treat `.env.local` as user-owned**, same spirit as the old `config.py`. Never commit it; `.env.example` documents the required keys with no real values.
+5. **Ask before deviating from `migration.md`'s architecture** (data layer abstraction, RLS-based auth, schema shape). Small judgment calls (component naming, file organization within `src/`) are fine to make on your own.
+6. **Keep changes scoped.** Don't refactor unrelated code while implementing a feature. Note follow-ups in `PROGRESS.md` rather than doing them inline.
 
 ## Tech stack (decided — see `migration.md` §3 for full version list and rationale)
 

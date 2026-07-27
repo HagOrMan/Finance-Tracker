@@ -63,11 +63,18 @@ See `migration.md` for the full record of migration-time decisions (data layer d
   - **Truncated text shows in full on hover** — `title` on `MultiSelect` options and trigger summary, the quick-add "refund of receipt" combobox rows, the receipts-table note cell and the heatmap's category labels. The `MultiSelect` popover also sizes to its content now (`w-auto min-w-(--radix-popover-trigger-width) max-w-80`) instead of a fixed `w-55`, so most store names simply fit.
   - **Select all / Deselect all in every `MultiSelect`** — one component, so this lands on all 13 usages (filter bar, monthly, categories, disbursements, receipts table). Deselect all clears just that filter, leaving the rest untouched. Both actions are **search-aware**: with a query typed they act on the matching rows only. To make that honest, filtering moved out of cmdk (`shouldFilter={false}`) into the component, so "all" means exactly what's on screen — cmdk's fuzzy match couldn't be replicated to compute the same set. The action bar stops keydown propagation because cmdk's root handles Enter for its whole subtree and would otherwise also toggle the highlighted option.
     - Empty selection still means "no filter", so Deselect all is the same as never having filtered. With no search active it hard-clears to `[]` rather than subtracting the visible set — that also drops values persisted in localStorage that are no longer in `options`.
-  - **Store autofill in quick-add** — the Store field stays free text but now has a `<datalist>` of every store already used (from the cached `/api/receipts` query, so no extra request), with `autoComplete="off"` so the browser's own form history doesn't fight the datalist for the dropdown.
+  - **Store autofill in quick-add** — the Store field stays free text but now suggests every store already used (from the cached `/api/receipts` query, so no extra request). First cut was a native `<datalist>`; replaced after testing with `src/components/autocomplete-input.tsx` — see the entry below.
+
+- **Quick-add fixes after first runtime test (this session)**
+  - **`@hookform/resolvers` 3.9.1 → 5.5.7 — this was a real, silent bug.** v3 predates zod 4: it decides "is this a zod error?" with `Array.isArray(error.errors)`, and zod 4 renamed that property to `error.issues`. So the resolver *rethrew* every validation failure instead of returning it as form state — surfacing as `unhandledRejection: ZodError` in the console (what you hit on picking a category, which runs `setValue(…, {shouldValidate: true})`) and meaning **no field error message has ever rendered** in the quick-add form; an invalid submit crashed instead. v5 detects zod 4 by `_zod.traits.has("$ZodError")` and reads `.issues`. The API routes were already correct — they read `parsed.error.issues` directly. Note `pnpm add` alphabetized both dependency blocks in `package.json`; only the resolver version actually changed.
+  - **Category `Select` was flipping from uncontrolled to controlled** (React warning on first pick): its value was `isKnownCategory ? category : undefined`, and `undefined` means uncontrolled. Now `""` — Radix's `shouldShowPlaceholder` treats `""` and `undefined` identically for display, but `""` counts as controlled, so the component never switches modes.
+  - **Native `<datalist>` replaced with `src/components/autocomplete-input.tsx`** — the datalist needed several clicks to land a suggestion. Chrome renders it through the same popup as autofill, so it's inconsistent about opening on the first click and about staying open long enough to click an entry (`autoComplete="off"`, which we set to keep form history out of the way, is itself a suspect). The replacement is a plain suggestion list: opens on focus, filters as you type, arrow keys + Enter, `onMouseDown` preventDefault on each row so the input doesn't blur the list away before the click lands, and Escape closes the list without closing the surrounding dialog. The input stays uncontrolled so `register` still owns it — the component takes the current value as `query` purely to filter, and hands picks back through `onPick` → `setValue`.
 
 ## In progress
 
-_Nothing._
+- **Three new features designed, not yet built — see [`FEATURES.md`](FEATURES.md).** Store×category hygiene page, receipt/disbursement CRUD, and a subscriptions system. Phased 0→3, with Phase 0 (the write path: `updated_at`, PATCH/DELETE routes, shared `ReceiptEditor`) as the shared foundation all three sit on. Governing principle: *receipts are the ledger of facts; everything else generates into it or reads from it* — which is why subscriptions generate receipts rather than entering the math, and why there is no price-history table.
+  - Flagged there and worth knowing now: `supabase/migrations/finance_tracker_schema.sql` §4's comment ("only select and insert… a leaked secret key cannot rewrite or destroy history") is **false** — line 192 of the same file is a live `grant update, delete`. Corrected in Phase 0.
+  - New security boundary in Phase 3: `/api/cron/subscriptions` is the app's first handler that cannot call `requireOwnerForApi()`. It gates on `CRON_SECRET` instead, fail-closed when unset. `CLAUDE.md`'s hard rules get an explicit exception so it doesn't read as a missing guard.
 
 ## Needs your attention (auth rework)
 
@@ -82,6 +89,8 @@ _Nothing._
 
 These need your Supabase / GCP / Vercel account access, which Claude doesn't have. Steps 1–3 are the ones the auth guide calls out as easy to get wrong.
 
+**State as of the `FEATURES.md` design session:** steps 3–7 are done — the schema is live and the SQLite backfill has run, so all development happens against real data. **Step 9 (deploy) has not happened**, by choice: the plan is to deploy once `FEATURES.md` Phases 0–3 are built. That deferral has one hard consequence — Vercel crons only fire on production deployments, so Phase 3's *scheduled* path can't be verified until after step 9. See `FEATURES.md` §7.5 for how to split verification around that. Step 9 also grows by five env vars (§7.2), and `vercel.json` must be committed before the first deploy or the cron won't exist at all.
+
 1. **Supabase → Authentication → URL Configuration → Redirect URLs.** Add every origin this app finishes sign-in on:
    `https://<this-app>.kylehagerman.dev/auth/callback`, `https://<this-app>.vercel.app/auth/callback`, `https://*-<vercel-scope>.vercel.app/auth/callback`, `http://localhost:3000/auth/callback`.
    Miss one and Supabase silently falls back to the project-wide **Site URL**, which belongs to a *different* app — so sign-in "works" but lands you on the wrong domain. **Do not change the Site URL**, and do not add a second keep-alive cron (personal-website's covers the project).
@@ -90,14 +99,14 @@ These need your Supabase / GCP / Vercel account access, which Claude doesn't hav
 4. Copy `.env.example` → `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL` and **`SUPABASE_SECRET_KEY`** (the app itself needs this one now, not just the script). Leave `OWNER_USER_IDS` blank for now.
 5. `pnpm install`, `pnpm dev`, visit `/login`, sign in with Google. Because the allowlist is empty you'll land back on `/login` with your user id printed — that's the bootstrap path working, not a bug.
 6. Put that UUID in `OWNER_USER_IDS` and restart. You should now reach `/`.
-7. Add `SQLITE_DB_PATH` to `.env.local`, then run `pnpm migrate:sqlite-to-supabase` (no env prefix, no user id needed) and run the two `setval(...)` statements it prints in the Supabase SQL editor.
+7. ~~Add `SQLITE_DB_PATH` to `.env.local`, then run `pnpm migrate:sqlite-to-supabase` (no env prefix, no user id needed) and run the two `setval(...)` statements it prints in the Supabase SQL editor.~~ **Done.**
 8. Click through all 6 pages + quick-add — none of this has been runtime-tested (Claude can't run `pnpm dev`/`build` under this session's constraints). Report back anything broken.
 9. Deploy to Vercel and mirror **every** env var into Production, Preview *and* Development — `.env.local` is local only, and auth working locally but 401ing on Vercel is almost always this. `DATA_SOURCE`/`SQLITE_DB_PATH` stay unset in production.
 10. Verify in a private window that a protected route 302s to `/login`, and that sign-out clears the session.
 
 ## Follow-ups
 
-- [ ] Edit/delete UI for existing rows — still out of scope, matches the old app's read-only-except-quick-add design.
+- [x] ~~Edit/delete UI for existing rows — still out of scope~~ — **superseded.** Now scoped as Phase 0 + Phase 2 of [`FEATURES.md`](FEATURES.md); the read-only-except-quick-add design is being deliberately dropped.
 - [ ] Confirm the Daily page's per-category (not per-receipt) stacked-bar aggregation is acceptable — see `migration.md` §14a.
 - [ ] Confirm ISO-week bucketing (Mon-Sun) is fine for `/savings` and `/disbursements` weekly views — differs slightly from the old pandas `resample("W")` (Sunday-ending weeks). See `migration.md` §15.
 - [ ] Decide whether the quick-add "refund of receipt" combobox should stay unscoped (searches *all* receipts) once the dataset grows large.
