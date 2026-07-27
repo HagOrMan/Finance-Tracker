@@ -4,30 +4,91 @@ const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected date format YYYY-MM-DD");
 
-// Shared between the quick-add form (client-side validation/UX) and the
-// API route handlers (the actual trust boundary — never rely on the form
-// alone for a write path).
-export const newReceiptSchema = z.object({
+// ---------------------------------------------------------------------------
+// Field definitions, WITHOUT defaults.
+//
+// The defaults live on `newReceiptSchema` alone, and that separation is
+// load-bearing rather than stylistic. Writing `newReceiptSchema.partial()` for
+// the update schema would carry `.default(0)` along with it, so a PATCH that
+// only touches `category` would arrive at the data layer carrying
+// `discount: 0` — silently zeroing a real discount on every unrelated edit.
+// A defaults-free base makes that impossible to reintroduce by accident.
+// ---------------------------------------------------------------------------
+const receiptFields = {
   store: z.string().trim().min(1, "Store is required"),
   category: z.string().trim().min(1, "Category is required"),
   price: z.coerce.number().positive("Price must be greater than 0"),
-  discount: z.coerce.number().min(0).default(0),
-  discount_percentage: z.coerce.number().min(0).max(100).default(0),
-  note: z.string().trim().optional().nullable(),
+  discount: z.coerce.number().min(0),
+  discount_percentage: z.coerce.number().min(0).max(100),
+  note: z.string().trim().nullable().optional(),
   date: isoDate,
-});
+} as const;
 
-export const newDisbursementSchema = z.object({
+const disbursementFields = {
   entity: z.string().trim().min(1, "Entity is required"),
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   date_received: isoDate,
-  reason: z.string().trim().optional().nullable(),
+  reason: z.string().trim().nullable().optional(),
   // Not coerced, unlike the money fields: this one never passes through a text
   // input. The combobox writes a number (or null) with `setValue`, and the API
   // reads it off JSON. Coercing would widen the *input* type to `unknown`, and
   // react-hook-form's `DeepPartial<unknown>` is `{}` — which `null` can't be
   // assigned to, breaking the form's `defaultValues`.
-  refunded_from_receipt: z.number().int().positive().optional().nullable(),
+  refunded_from_receipt: z.number().int().positive().nullable().optional(),
+} as const;
+
+// ---------------------------------------------------------------------------
+// Create — shared between the quick-add form (client-side validation/UX) and
+// the API route handlers (the actual trust boundary — never rely on the form
+// alone for a write path).
+// ---------------------------------------------------------------------------
+export const newReceiptSchema = z.object({
+  ...receiptFields,
+  discount: receiptFields.discount.default(0),
+  discount_percentage: receiptFields.discount_percentage.default(0),
+});
+
+export const newDisbursementSchema = z.object(disbursementFields);
+
+// ---------------------------------------------------------------------------
+// Update — every field optional, but at least one required.
+//
+// Optional means "not being changed", NOT "clear it". An empty string still
+// fails `.min(1)`, so a blanked-out Store is a validation error rather than a
+// row that quietly loses its name. `note` / `reason` are the two fields that
+// *can* be cleared, by sending an explicit `null`.
+// ---------------------------------------------------------------------------
+export const updateReceiptSchema = z
+  .object(receiptFields)
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, "No fields to update");
+
+export const updateDisbursementSchema = z
+  .object(disbursementFields)
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, "No fields to update");
+
+// ---------------------------------------------------------------------------
+// Bulk update — id-list based, not filter-based (FEATURES.md D7).
+//
+// One endpoint per table covers recategorize, rename and merge, because all
+// three are "apply this patch to these rows". The client already holds every
+// receipt, so it can compute the id list itself and the server never has to
+// re-derive a filter it can't see.
+//
+// The 1000 cap is a blast-radius limit, not a performance one: a bulk write is
+// unlogged and un-undoable, and no honest UI action selects more than that.
+// ---------------------------------------------------------------------------
+const idList = z.array(z.number().int().positive()).min(1).max(1000);
+
+export const bulkUpdateReceiptsSchema = z.object({
+  ids: idList,
+  patch: updateReceiptSchema,
+});
+
+export const bulkUpdateDisbursementsSchema = z.object({
+  ids: idList,
+  patch: updateDisbursementSchema,
 });
 
 // The form needs both ends of the schema. `z.coerce` means what react-hook-form
@@ -38,3 +99,12 @@ export type NewReceiptFormInput = z.input<typeof newReceiptSchema>;
 export type NewDisbursementFormInput = z.input<typeof newDisbursementSchema>;
 export type NewReceiptFormValues = z.output<typeof newReceiptSchema>;
 export type NewDisbursementFormValues = z.output<typeof newDisbursementSchema>;
+
+export type UpdateReceiptFormInput = z.input<typeof updateReceiptSchema>;
+export type UpdateDisbursementFormInput = z.input<
+  typeof updateDisbursementSchema
+>;
+export type UpdateReceiptFormValues = z.output<typeof updateReceiptSchema>;
+export type UpdateDisbursementFormValues = z.output<
+  typeof updateDisbursementSchema
+>;

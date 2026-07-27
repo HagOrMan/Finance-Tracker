@@ -29,13 +29,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -45,6 +38,7 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AutocompleteInput } from "@/components/autocomplete-input";
+import { CategorySelect } from "@/components/category-select";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   useAddDisbursement,
@@ -60,7 +54,6 @@ import {
   type NewReceiptFormInput,
   type NewReceiptFormValues,
 } from "@/lib/data/schemas";
-import { CATEGORY_OPTIONS } from "@/lib/data/types";
 import { todayISO } from "@/lib/filters";
 
 export function QuickAddButton() {
@@ -167,7 +160,6 @@ function BulkAddToggle({
 function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
   const addReceipt = useAddReceipt();
   const { data: receipts } = useMergedReceipts();
-  const [customCategory, setCustomCategory] = useState(false);
 
   // Store stays free text, but every store already used is offered as a
   // suggestion so the same shop doesn't end up spelled two ways.
@@ -198,7 +190,6 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
 
   const store = watch("store");
   const category = watch("category");
-  const isKnownCategory = (CATEGORY_OPTIONS as readonly string[]).includes(category);
 
   async function onSubmit(values: NewReceiptFormValues) {
     try {
@@ -218,7 +209,6 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
         note: "",
         date: values.date,
       });
-      setCustomCategory(false);
       onDone();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add receipt");
@@ -241,36 +231,11 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="r-category">Category</Label>
-        {!customCategory ? (
-          <Select
-            // "" (not undefined) for "nothing picked yet": Radix shows the
-            // placeholder for both, but undefined makes the Select uncontrolled
-            // until the first pick, which React warns about on the switch.
-            value={isKnownCategory ? category : ""}
-            onValueChange={(v) => {
-              if (v === "__other__") {
-                setCustomCategory(true);
-                setValue("category", "", { shouldValidate: true });
-              } else {
-                setValue("category", v, { shouldValidate: true });
-              }
-            }}
-          >
-            <SelectTrigger id="r-category" className="w-full">
-              <SelectValue placeholder="Select a category" />
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORY_OPTIONS.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-              <SelectItem value="__other__">Other (type your own)</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-          <Input id="r-category" placeholder="Category" autoFocus {...register("category")} />
-        )}
+        <CategorySelect
+          id="r-category"
+          value={category}
+          onChange={(v) => setValue("category", v, { shouldValidate: true })}
+        />
         {errors.category && (
           <p className="text-xs text-destructive">{errors.category.message}</p>
         )}

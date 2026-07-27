@@ -139,10 +139,13 @@ grant usage, select, update on all sequences in schema finance_tracker to servic
 -- mean a future table silently starts out readable with the public anon key.
 -- New tables get an explicit grant or they get nothing.
 
--- Only select and insert: the app issues no UPDATE and no DELETE anywhere (see
--- src/lib/data/supabase-source.ts), so even a leaked secret key cannot rewrite
--- or destroy history through PostgREST. Section 6 has what to add if you build
--- edit/delete UI.
+-- UPDATE and DELETE are granted too, at the bottom of section 6. The app does
+-- issue both now (edit/delete UI — see src/lib/data/supabase-source.ts), so the
+-- secret key's blast radius is full read/write/delete: it can rewrite and
+-- destroy history through PostgREST. OWNER_USER_IDS is the only thing standing
+-- in front of that. An earlier version of this comment claimed the opposite
+-- while line 192 already granted them; it was wrong, and a security note that
+-- is quietly false is worse than no note.
 
 
 -- ---------------------------------------------------------------------------
@@ -182,12 +185,10 @@ drop policy if exists "owner full access" on finance_tracker.disbursements;
 -- an empty array would mean privileges are open and only RLS is holding, which
 -- is one mistake away from exposure.
 --
--- If you later build edit/delete UI, privileges and policies are separate
--- gates; under Pattern A only the grant is needed:
---
---   grant update, delete on
---       finance_tracker.receipts, finance_tracker.disbursements
---       to service_role;
+-- The edit/delete UI exists (FEATURES.md Phase 0), so the app issues UPDATE and
+-- DELETE. Privileges and policies are separate gates; under Pattern A only the
+-- grant is needed, and it is live below — not a suggestion. 002_mutable_rows.sql
+-- restates it idempotently alongside the updated_at triggers that depend on it.
 -- ---------------------------------------------------------------------------
 grant update, delete on
       finance_tracker.receipts, finance_tracker.disbursements

@@ -76,6 +76,7 @@ the only things standing in front of it.
 | D8  | Subscriptions are **Supabase-only**; `DATA_SOURCE=sqlite` throws on subscription methods                                                                      | sqlite mode is dev-only and its DB has no such table                                                                                                                                 |
 | D9  | **No "Subscriptions" category.** Each subscription keeps its own real category (one is Professional Development, etc.); `subscription_id` is what groups them | §6.0 — the category answers _what kind of spending is this_, which is what every existing chart slices by. A catch-all category would collapse that distinction and re-file history. |
 | D10 | `APP_TIMEZONE` = `America/Toronto`; Vercel **Hobby**                                                                                                          | Confirmed. See §6.5, §6.6.                                                                                                                                                           |
+| D11 | **Disbursement entities get the same hygiene treatment as stores**, reusing one grouping implementation over a second field rather than a parallel one         | Added after the original design — §4.7. `entity` has exactly the free-text-drift problem `store` has, and merging is the same operation on a different column.                        |
 
 ---
 
@@ -244,13 +245,25 @@ building the patch _only_ from `parsed.data` is what keeps `id`, `created_at`,
 New files, each starting with `const denied = await requireOwnerForApi(); if (denied) return denied;`
 — no exceptions, per `CLAUDE.md`'s hard rule.
 
-| Method   | Path                      | Body                       | Notes                                           |
-| -------- | ------------------------- | -------------------------- | ----------------------------------------------- |
-| `PATCH`  | `/api/receipts/[id]`      | `updateReceiptSchema`      | 404 if no row                                   |
-| `DELETE` | `/api/receipts/[id]`      | —                          | **409 + linked disbursements** if FK would fire |
-| `PATCH`  | `/api/receipts/bulk`      | `bulkUpdateReceiptsSchema` | returns updated rows                            |
-| `PATCH`  | `/api/disbursements/[id]` | `updateDisbursementSchema` |                                                 |
-| `DELETE` | `/api/disbursements/[id]` | —                          | no FK to guard                                  |
+| Method   | Path                       | Body                            | Notes                                           |
+| -------- | -------------------------- | ------------------------------- | ----------------------------------------------- |
+| `PATCH`  | `/api/receipts/[id]`       | `updateReceiptSchema`           | 404 if no row                                   |
+| `DELETE` | `/api/receipts/[id]`       | —                               | **409 + linked disbursements** if FK would fire |
+| `PATCH`  | `/api/receipts/bulk`       | `bulkUpdateReceiptsSchema`      | returns updated rows                            |
+| `PATCH`  | `/api/disbursements/[id]`  | `updateDisbursementSchema`      |                                                 |
+| `DELETE` | `/api/disbursements/[id]`  | —                               | no FK to guard                                  |
+| `PATCH`  | `/api/disbursements/bulk`  | `bulkUpdateDisbursementsSchema` | **amendment** — see §4.7 / D11                  |
+
+> **Amendment (added after approval).** The last row is new. Entity merging
+> (§4.7) needs the same id-list bulk write that store merging does, and Phase 0
+> is where the write path lives — building the endpoint here rather than
+> retrofitting it in Phase 1 keeps "one endpoint per table covers recategorize,
+> rename and merge" (D7) true for both tables. `DataSource` correspondingly
+> gains `updateDisbursements(ids, patch)` alongside `updateReceipts`.
+>
+> Note the static-vs-dynamic segment ordering this relies on: Next matches
+> `/api/receipts/bulk` against the literal `bulk` route before the sibling
+> `[id]` route. Ids are numeric, so nothing can collide with it.
 
 **The delete guard.** Before deleting, call `disbursementsForReceipt(id)`. If
 non-empty, return `409` with a usable payload rather than a raw Postgres error:
@@ -276,7 +289,8 @@ map it to the same 409 — the check-then-delete window is a race, and a raw
 ### 3.5 Hooks — `src/hooks/use-finance-data.ts`
 
 Add `useUpdateReceipt`, `useBulkUpdateReceipts`, `useDeleteReceipt`,
-`useUpdateDisbursement`, `useDeleteDisbursement`. Every one invalidates
+`useUpdateDisbursement`, `useBulkUpdateDisbursements` (§4.7 amendment),
+`useDeleteDisbursement`. Every one invalidates
 `RECEIPTS_KEY`; the disbursement mutations invalidate **both** keys, because a
 refund's amount feeds `actual_price` via
 [`mergeReceipts`](src/lib/data/merge.ts) (the existing `useAddDisbursement`
@@ -306,16 +320,18 @@ the `linked` list inline.
 - [ ] `types.ts`: `Receipt.subscription_id`, `Receipt.updated_at`, update inputs, `DataSource` methods
 - [ ] `supabase-source.ts` + `sqlite-source.ts` implement them (sqlite coalesces the two new columns)
 - [ ] `schemas.ts` restructured — verify the discount-default trap is gone
-- [ ] 5 new route files
-- [ ] 5 new hooks
+- [ ] 4 new route files / 6 handlers (the `/api/disbursements/bulk` row is the §4.7 amendment)
+- [ ] 6 new hooks
 - [ ] `receipt-editor.tsx`, `category-select.tsx`
 - [ ] **You run** `pnpm typecheck` and `pnpm lint` and report failures
 
 ---
 
-## 4. Phase 1 — Stores page
+## 4. Phase 1 — Stores page (and entities — §4.7)
 
-Route: `/stores`.
+Route: `/stores`, two tabs: **Stores** and **Entities**. §4.1–§4.6 describe the
+Stores tab; §4.7 describes the Entities tab, which is the same machinery over
+`disbursements.entity`.
 
 ### 4.1 It needs no new read endpoint
 
@@ -443,10 +459,79 @@ rather than silently filling. Derived from history — **no store-defaults table
 adding one would be a second place that knows a store's category, which §0
 forbids.
 
-### 4.7 Phase 1 checklist
+### 4.7 Entities — the same problem, one column over (D11)
 
-- [ ] `src/lib/stores.ts` — keys, Levenshtein, `buildStoreGroups`, duplicate candidates
-- [ ] `src/app/stores/page.tsx`, `src/components/store-detail-modal.tsx`, `src/components/store-merge-dialog.tsx`
+> **Amendment (added after approval).** Not in the original design. The ask:
+> _"I also want to merge disbursement entities, not just stores, because
+> sometimes I named them differently."_ Nothing in §0 objects — an entity, like
+> a store's category, is an observation over the ledger rather than a stored
+> fact, so fixing one means rewriting disbursements. Same principle, same shape.
+
+**Why it belongs here and not in its own phase.** `storeGroupKey` and
+`storeSimilarityKey` (§4.2) are string normalizers; they don't know what a store
+is. The Levenshtein and the candidate rules are likewise field-agnostic. Only
+the *aggregate* differs. So:
+
+- Move the field-agnostic half into **`src/lib/name-groups.ts`**:
+  `nameGroupKey`, `nameSimilarityKey`, `levenshtein`, `duplicateCandidates`.
+  (This supersedes §4.2's placement of them in `src/lib/stores.ts` — the
+  functions themselves are unchanged, only the file they live in.)
+- `src/lib/stores.ts` and `src/lib/entities.ts` each build their own aggregate
+  on top. Two aggregates, one similarity implementation.
+
+**Row model.** An entity has no category axis, so there is no mix bar and no
+`minorityCount`:
+
+```ts
+export interface EntityGroup {
+  key: string; // nameGroupKey
+  displayName: string; // most frequent raw spelling
+  spellings: string[]; // every raw spelling seen, for the merge UI
+  disbursementIds: number[];
+  count: number;
+  total: number; // sum(amount)
+  refundCount: number; // rows with refunded_from_receipt != null
+  refundTotal: number; // ...and their summed amount
+  firstDate: string;
+  lastDate: string;
+}
+```
+
+Default sort: **duplicate-name candidates first**, then `count` desc. With no
+category-consistency signal to rank by, near-duplicate names *are* the finding —
+which is precisely what the ask was about.
+
+**Two surfaces, because the ask named both:**
+
+1. **The Entities tab** (`/stores`) — table of `displayName · count · total ·
+   refunds · date range`, a duplicate-name callout identical to the Stores one,
+   and a row-click modal whose bulk bar offers `Rename entity to […]` and
+   `Merge into [existing entity ▾]`. Both are one
+   `PATCH /api/disbursements/bulk` with `{ ids, patch: { entity } }`.
+2. **The table editor** (`/manage` → Disbursements tab, §5) — multi-select rows,
+   then **"Set entity"** in the selection action bar. Same endpoint. This is the
+   escape hatch for the cases grouping can't see, e.g. two genuinely different
+   spellings that share no substring.
+
+**Refunds are untouched by a rename.** `refunded_from_receipt` is a foreign key,
+not a name, so merging entities cannot disturb `actual_price` anywhere. That is
+the whole reason this is safe to do in bulk while editing a refund *amount*
+(§5) is not.
+
+**Prevention already exists.** The quick-add Entity field has used
+`AutocompleteInput` over every entity in history since the bulk-add session, so
+new drift is already unlikely — this page is for the backlog of names created
+before it did.
+
+`002_mutable_rows.sql` adds `disbursements_entity_idx` for the grouping read,
+mirroring `receipts_store_idx`.
+
+### 4.8 Phase 1 checklist
+
+- [ ] `src/lib/name-groups.ts` — keys, Levenshtein, duplicate candidates (§4.7)
+- [ ] `src/lib/stores.ts` — `buildStoreGroups` on top of it
+- [ ] `src/lib/entities.ts` — `buildEntityGroups` on top of it
+- [ ] `src/app/stores/page.tsx` (Stores / Entities tabs), `src/components/store-detail-modal.tsx`, `src/components/entity-detail-modal.tsx`, `src/components/store-merge-dialog.tsx` (generic over field)
 - [ ] Category-mix bar component (reuses `useCategoryColors`)
 - [ ] Quick-add store combobox + category autofill hint
 - [ ] Nav entry (§7.1)
@@ -466,10 +551,14 @@ plus multi-select, wired to the Phase 0 hooks and `ReceiptEditor`.
   and `selectable?: boolean`; when set it renders a checkbox column, an edit
   button per row, and a selection action bar. The existing read-only callers pass
   neither and are unaffected.
-- **Selection action bar:** "Set category", "Set store", "Delete N" — the same
-  bulk endpoint as Phase 1.
+- **Selection action bar:** receipts get "Set category", "Set store", "Delete N";
+  disbursements get **"Set entity"** and "Delete N" (§4.7) — the same two bulk
+  endpoints Phase 1 uses.
 - **Disbursements tab** matters as much as receipts: a wrong refund amount
   silently corrupts `actual_price` on every net-paid figure across the app.
+  It also needs a `DisbursementEditor` mirroring the `ReceiptEditor` Phase 0
+  built — the `PATCH`/`DELETE` routes and hooks for it already exist and are
+  unused until this phase.
 - Add a `Sub` badge on rows with `subscription_id != null` (Phase 3), linking to
   the subscription.
 - Show `updated_at` as a "last edited" column.
@@ -484,7 +573,8 @@ don't pre-build it.
 - [ ] `ReceiptsTable` gains `editable` / `selectable` (existing callers untouched)
 - [ ] `src/app/manage/page.tsx` with both tabs
 - [ ] `src/components/disbursements-table.tsx` (editable equivalent)
-- [ ] Bulk selection action bar
+- [ ] `src/components/disbursement-editor.tsx` (mirrors Phase 0's `receipt-editor.tsx`)
+- [ ] Bulk selection action bar — incl. "Set entity" on disbursements (§4.7)
 - [ ] Nav entry (§7.1)
 
 ---
@@ -885,19 +975,24 @@ Phase 0  supabase/migrations/002_mutable_rows.sql          [new]
          supabase/migrations/finance_tracker_schema.sql    [comment fix]
          src/types/database.ts                             [regen]
          src/lib/data/{types,schemas,supabase-source,sqlite-source}.ts
+         src/lib/data/errors.ts                            [new]
+         src/lib/api.ts                                    [new]
          src/app/api/receipts/[id]/route.ts                [new]
          src/app/api/receipts/bulk/route.ts                [new]
          src/app/api/disbursements/[id]/route.ts           [new]
+         src/app/api/disbursements/bulk/route.ts           [new, §4.7]
          src/hooks/use-finance-data.ts
          src/components/{receipt-editor,category-select}.tsx  [new]
+         src/components/quick-add-modal.tsx                [uses CategorySelect]
 
-Phase 1  src/lib/stores.ts                                 [new]
+Phase 1  src/lib/{name-groups,stores,entities}.ts          [new, §4.7]
          src/app/stores/page.tsx                           [new]
-         src/components/{store-detail-modal,store-merge-dialog,category-mix-bar}.tsx  [new]
+         src/components/{store-detail-modal,entity-detail-modal,store-merge-dialog,category-mix-bar}.tsx  [new]
          src/components/quick-add-modal.tsx                [store combobox + autofill]
 
 Phase 2  src/app/manage/page.tsx                           [new]
          src/components/disbursements-table.tsx            [new]
+         src/components/disbursement-editor.tsx            [new]
          src/components/receipts-table.tsx                 [+editable/+selectable]
 
 Phase 3  supabase/migrations/003_subscriptions.sql         [new]
