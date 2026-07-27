@@ -1,0 +1,414 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-primary-rgb-50: rgb(var(--tw-color-primary-50));
+  --color-primary-rgb-100: rgb(var(--tw-color-primary-100));
+  --color-primary-rgb-200: rgb(var(--tw-color-primary-200));
+  --color-primary-rgb-300: rgb(var(--tw-color-primary-300));
+  --color-primary-rgb-400: rgb(var(--tw-color-primary-400));
+  --color-primary-rgb-500: rgb(var(--tw-color-primary-500));
+  --color-primary-rgb-600: rgb(var(--tw-color-primary-600));
+  --color-primary-rgb-700: rgb(var(--tw-color-primary-700));
+  --color-primary-rgb-800: rgb(var(--tw-color-primary-800));
+  --color-primary-rgb-900: rgb(var(--tw-color-primary-900));
+  --color-primary-rgb-950: rgb(var(--tw-color-primary-950));
+
+  --color-lush-50: rgb(var(--tw-color-lush-50));
+  --color-lush-100: rgb(var(--tw-color-lush-100));
+  --color-lush-200: rgb(var(--tw-color-lush-200));
+  --color-lush-300: rgb(var(--tw-color-lush-300));
+  --color-lush-400: rgb(var(--tw-color-lush-400));
+  --color-lush-500: rgb(var(--tw-color-lush-500));
+  --color-lush-600: rgb(var(--tw-color-lush-600));
+  --color-lush-700: rgb(var(--tw-color-lush-700));
+  --color-lush-800: rgb(var(--tw-color-lush-800));
+  --color-lush-900: rgb(var(--tw-color-lush-900));
+  --color-lush-950: rgb(var(--tw-color-lush-950));
+
+  --color-breeze-50: rgb(var(--tw-color-breeze-50));
+  --color-breeze-100: rgb(var(--tw-color-breeze-100));
+  --color-breeze-200: rgb(var(--tw-color-breeze-200));
+  --color-breeze-300: rgb(var(--tw-color-breeze-300));
+  --color-breeze-400: rgb(var(--tw-color-breeze-400));
+  --color-breeze-500: rgb(var(--tw-color-breeze-500));
+  --color-breeze-600: rgb(var(--tw-color-breeze-600));
+  --color-breeze-700: rgb(var(--tw-color-breeze-700));
+  --color-breeze-800: rgb(var(--tw-color-breeze-800));
+  --color-breeze-900: rgb(var(--tw-color-breeze-900));
+  --color-breeze-950: rgb(var(--tw-color-breeze-950));
+
+  --color-nebula-50: rgb(var(--tw-color-nebula-50));
+  --color-nebula-100: rgb(var(--tw-color-nebula-100));
+  --color-nebula-200: rgb(var(--tw-color-nebula-200));
+  --color-nebula-300: rgb(var(--tw-color-nebula-300));
+  --color-nebula-400: rgb(var(--tw-color-nebula-400));
+  --color-nebula-500: rgb(var(--tw-color-nebula-500));
+  --color-nebula-600: rgb(var(--tw-color-nebula-600));
+  --color-nebula-700: rgb(var(--tw-color-nebula-700));
+  --color-nebula-800: rgb(var(--tw-color-nebula-800));
+  --color-nebula-900: rgb(var(--tw-color-nebula-900));
+  --color-nebula-950: rgb(var(--tw-color-nebula-950));
+
+  --radius-lg: var(--radius);
+
+  --animate-flicker: flicker 3s linear infinite;
+  --animate-shimmer: shimmer 1.3s linear infinite;
+  --animate-collapsible-down: collapsible-down 0.2s ease-out;
+  --animate-collapsible-up: collapsible-up 0.2s ease-out;
+
+  @keyframes flicker {
+    0%,
+    19.999%,
+    22%,
+    62.999%,
+    64%,
+    64.999%,
+    70%,
+    100% {
+      opacity: 0.99;
+      filter: drop-shadow-sm(0 0 1px rgba(252, 211, 77))
+        drop-shadow-sm(0 0 15px rgba(245, 158, 11))
+        drop-shadow-sm(0 0 1px rgba(252, 211, 77));
+    }
+    20%,
+    21.999%,
+    63%,
+    63.999%,
+    65%,
+    69.999% {
+      opacity: 0.4;
+      filter: none;
+    }
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: -700px 0;
+    }
+    100% {
+      background-position: 700px 0;
+    }
+  }
+
+  /* Radix Collapsible exposes its measured content height as a CSS var;
+     pair these with overflow-hidden on the CollapsibleContent element. */
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+    }
+  }
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+
+  @keyframes glitch-skew {
+    0% {
+      transform: skew(0deg);
+    }
+    10% {
+      transform: skew(2deg);
+    }
+    20% {
+      transform: skew(-1deg);
+    }
+    30% {
+      transform: skew(1deg);
+    }
+    40% {
+      transform: skew(-2deg);
+    }
+    50% {
+      transform: skew(1deg);
+    }
+    60% {
+      transform: skew(-1deg);
+    }
+    70% {
+      transform: skew(0deg);
+    }
+    80% {
+      transform: skew(1deg);
+    }
+    90% {
+      transform: skew(-1deg);
+    }
+    100% {
+      transform: skew(0deg);
+    }
+  }
+
+  @keyframes glitch-bar {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility animated-underline {
+  background-image:
+    linear-gradient(#33333300, #33333300),
+    linear-gradient(
+      to right,
+      var(--color-primary-rgb-400),
+      var(--color-primary-rgb-500)
+    );
+  background-size:
+    100% 2px,
+    0 2px;
+  background-position:
+    100% 100%,
+    0 100%;
+  background-repeat: no-repeat;
+  @media (prefers-reduced-motion: no-preference) {
+    transition: 0.3s ease;
+    transition-property: background-size, color, background-color, border-color;
+  }
+  &:hover {
+    background-size:
+      0 2px,
+      100% 2px;
+  }
+  &:focus-visible {
+    background-size:
+      0 2px,
+      100% 2px;
+  }
+}
+
+@layer utilities {
+  :root {
+    /* #region  /**=========== Shadcn Variables =========== */
+    --background: 180 60% 97%;
+    --foreground: 210 30% 12%;
+
+    --card: 180 60% 97%; /* soft aqua background */
+    --card-foreground: 210 20% 20%; /* cool dark grayish-blue text */
+
+    --popover: 180 60% 98%; /* even lighter than card */
+    --popover-foreground: 210 25% 15%;
+
+    /* Primary Buttons / Actions */
+    --primary: 172 100% 35%; /* lush-500 (turquoise main) */
+    --primary-foreground: 180 100% 98%; /* soft, near-white for contrast */
+
+    /* Secondary Elements */
+    --secondary: 200 80% 90%; /* breeze-100 / subtle blue */
+    --secondary-foreground: 210 30% 20%; /* muted navy */
+
+    /* Muted Content */
+    --muted: 195 45% 93%; /* desaturated light aqua */
+    --muted-foreground: 200 22% 42%; /* slate-aqua for text */
+
+    /* Accent (for highlights, tags, etc.) */
+    --accent: 195 50% 90%; /* light, bright turquoise */
+    --accent-foreground: 200 35% 18%; /* light, bright turquoise */
+
+    /* Destructive (red) */
+    --destructive: 358 85% 65%; /* coral-red */
+    --destructive-foreground: 0 100% 98%;
+
+    /* Borders, Inputs, Focus Rings */
+    --border: 180 40% 90%;
+    --input: 180 40% 90%;
+    --ring: 172 100% 40%; /* lush focus ring */
+
+    --radius: 0.5rem;
+    /* #endregion  /**======== Shadcn Variables =========== */
+
+    /* #region  /**=========== Primary Color Original Theme Idea =========== */
+    --tw-color-primary-50: 237 252 246; /* #edfcf6 */
+    --tw-color-primary-100: 210 249 233; /* #d2f9e9 */
+    --tw-color-primary-200: 169 241 215; /* #a9f1d7 */
+    --tw-color-primary-300: 114 227 192; /* #72e3c0 */
+    --tw-color-primary-400: 57 206 165; /* #39cea5 */
+    --tw-color-primary-500: 21 180 141; /* #15b48d */
+    --tw-color-primary-600: 9 146 115; /* #099273 */
+    --tw-color-primary-700: 7 110 90; /* #076e5a */
+    --tw-color-primary-800: 9 92 76; /* #095c4c */
+    --tw-color-primary-900: 8 76 64; /* #084c40 */
+    --tw-color-primary-950: 3 43 37; /* #032b25 */
+    --color-primary-rgb-50: rgb(var(--tw-color-primary-50));
+    --color-primary-rgb-100: rgb(var(--tw-color-primary-100));
+    --color-primary-rgb-200: rgb(var(--tw-color-primary-200));
+    --color-primary-rgb-300: rgb(var(--tw-color-primary-300));
+    --color-primary-rgb-400: rgb(var(--tw-color-primary-400));
+    --color-primary-rgb-500: rgb(var(--tw-color-primary-500));
+    --color-primary-rgb-600: rgb(var(--tw-color-primary-600));
+    --color-primary-rgb-700: rgb(var(--tw-color-primary-700));
+    --color-primary-rgb-800: rgb(var(--tw-color-primary-800));
+    --color-primary-rgb-900: rgb(var(--tw-color-primary-900));
+    --color-primary-rgb-950: rgb(var(--tw-color-primary-950));
+    /* #endregion  /**======== Primary Color Original Theme Idea =========== */
+
+    /* #region  /**=========== Custom Primary Colours =========== */
+    /* Lush (Turquoise) */
+    --tw-color-lush-50: 238 255 250;
+    --tw-color-lush-100: 197 255 242;
+    --tw-color-lush-200: 139 255 232;
+    --tw-color-lush-300: 66 255 217;
+    --tw-color-lush-400: 20 237 200;
+    --tw-color-lush-500: 0 209 176;
+    --tw-color-lush-600: 0 168 146;
+    --tw-color-lush-700: 0 133 117;
+    --tw-color-lush-800: 5 106 95;
+    --tw-color-lush-900: 10 87 79;
+    --tw-color-lush-950: 0 53 50;
+
+    /* Breeze (Blue) */
+    --tw-color-breeze-50: 240 249 255;
+    --tw-color-breeze-100: 223 243 255;
+    --tw-color-breeze-200: 184 232 255;
+    --tw-color-breeze-300: 92 206 255;
+    --tw-color-breeze-400: 51 195 253;
+    --tw-color-breeze-500: 9 172 238;
+    --tw-color-breeze-600: 0 138 204;
+    --tw-color-breeze-700: 0 110 165;
+    --tw-color-breeze-800: 4 93 136;
+    --tw-color-breeze-900: 10 77 112;
+    --tw-color-breeze-950: 6 49 75;
+
+    /* Nebula (Purple) */
+    --tw-color-nebula-50: 237 237 255;
+    --tw-color-nebula-100: 222 223 255;
+    --tw-color-nebula-200: 196 196 255;
+    --tw-color-nebula-300: 162 160 255;
+    --tw-color-nebula-400: 142 128 255;
+    --tw-color-nebula-500: 120 91 249;
+    --tw-color-nebula-600: 107 61 238;
+    --tw-color-nebula-700: 93 47 211;
+    --tw-color-nebula-800: 75 41 170;
+    --tw-color-nebula-900: 63 41 134;
+    --tw-color-nebula-950: 39 24 78;
+    /* #endregion  /**======== Custom Primary Colours =========== */
+  }
+
+  html.dark {
+    --background: 190 50% 5%;
+    --foreground: 195 20% 88%;
+
+    --card: 190 45% 7%;
+    --card-foreground: 195 20% 88%;
+
+    --popover: 190 45% 9%;
+    --popover-foreground: 195 25% 90%;
+
+    --primary: 175 60% 40%; /* Deep vibrant Lush-like teal */
+    --primary-foreground: 190 40% 95%; /* Light aqua */
+
+    --secondary: 200 25% 15%; /* Muted navy-blue, matches background family */
+    --secondary-foreground: 195 25% 85%; /* Soft aqua-gray for text/icons */
+
+    --muted: 200 18% 11%; /* Very subdued cool charcoal */
+    --muted-foreground: 195 15% 62%; /* Dimmed seafoam, for subtle elements */
+
+    --accent: 195 30% 14%; /* Bright, refreshing teal for highlights/buttons */
+    --accent-foreground: 195 20% 90%; /* Light ocean mist */
+
+    --destructive: 0 65% 40%; /* Dark coral red */
+    --destructive-foreground: 0 80% 95%; /* Softened light coral text on red bg */
+
+    --border: 190 25% 14%; /* Dark cool border, not pure black */
+    --input: 190 25% 14%; /* Same as border for fields */
+    --ring: 195 80% 60%; /* Aqua highlight for focus rings */
+
+    /* #region  /**=========== Custom Primary Colours =========== */
+    --tw-color-lush-50: 240 253 249;
+    --tw-color-lush-100: 205 250 236;
+    --tw-color-lush-200: 156 243 218;
+    --tw-color-lush-300: 98 230 197;
+    --tw-color-lush-400: 50 207 172;
+    --tw-color-lush-500: 23 166 137;
+    --tw-color-lush-600: 17 144 121;
+    --tw-color-lush-700: 18 115 98;
+    --tw-color-lush-800: 19 92 80;
+    --tw-color-lush-900: 21 76 67;
+    --tw-color-lush-950: 5 46 41;
+
+    --tw-color-breeze-50: 242 249 253;
+    --tw-color-breeze-100: 229 240 249;
+    --tw-color-breeze-200: 196 226 243;
+    --tw-color-breeze-300: 144 201 233;
+    --tw-color-breeze-400: 63 163 214;
+    --tw-color-breeze-500: 47 147 200;
+    --tw-color-breeze-600: 32 118 169;
+    --tw-color-breeze-700: 27 95 137;
+    --tw-color-breeze-800: 26 80 114;
+    --tw-color-breeze-900: 27 68 95;
+    --tw-color-breeze-950: 18 44 63;
+
+    --tw-color-nebula-50: 236 239 255;
+    --tw-color-nebula-100: 220 226 255;
+    --tw-color-nebula-200: 191 200 255;
+    --tw-color-nebula-300: 153 164 255;
+    --tw-color-nebula-400: 112 115 255;
+    --tw-color-nebula-500: 89 79 255;
+    --tw-color-nebula-600: 75 47 252;
+    --tw-color-nebula-700: 64 35 223;
+    --tw-color-nebula-800: 53 32 179;
+    --tw-color-nebula-900: 49 36 148;
+    --tw-color-nebula-950: 29 20 82;
+    /* #endregion  /**======== Custom Primary Colours =========== */
+  }
+
+  .cursor-newtab {
+    cursor:
+      url("/images/new-tab.png") 10 10,
+      pointer;
+  }
+
+  body {
+    color: var(--foreground);
+    background: var(--background);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+}
