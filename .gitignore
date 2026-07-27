@@ -1,6 +1,17 @@
 config.py
 .venv/
 
+# --- Next.js / Node ---------------------------------------------------------
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env.*.local
+next-env.d.ts
+*.tsbuildinfo
+.vercel
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -17,8 +28,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
