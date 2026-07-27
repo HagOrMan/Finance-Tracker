@@ -1,0 +1,395 @@
+"use client";
+
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Check, ChevronsUpDown, Plus } from "lucide-react";
+import { toast } from "sonner";
+
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import {
+  useAddDisbursement,
+  useAddReceipt,
+  useMergedReceipts,
+} from "@/hooks/use-finance-data";
+import {
+  newDisbursementSchema,
+  newReceiptSchema,
+  type NewDisbursementFormValues,
+  type NewReceiptFormValues,
+} from "@/lib/data/schemas";
+import { CATEGORY_OPTIONS } from "@/lib/data/types";
+import { todayISO } from "@/lib/filters";
+
+export function QuickAddButton() {
+  const [open, setOpen] = useState(false);
+  const isDesktop = useMediaQuery("(min-width: 640px)");
+
+  const trigger = (
+    <Button
+      type="button"
+      size="icon"
+      className="fixed right-6 bottom-6 z-30 size-14 rounded-full shadow-lg"
+      aria-label="Quick add"
+    >
+      <Plus className="size-6" />
+    </Button>
+  );
+
+  if (isDesktop) {
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Quick add</DialogTitle>
+            <DialogDescription>Log a new receipt or disbursement.</DialogDescription>
+          </DialogHeader>
+          <QuickAddForm onDone={() => setOpen(false)} />
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Drawer open={open} onOpenChange={setOpen}>
+      <DrawerTrigger asChild>{trigger}</DrawerTrigger>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Quick add</DrawerTitle>
+          <DrawerDescription>Log a new receipt or disbursement.</DrawerDescription>
+        </DrawerHeader>
+        <div className="px-4 pb-6">
+          <QuickAddForm onDone={() => setOpen(false)} />
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function QuickAddForm({ onDone }: { onDone: () => void }) {
+  return (
+    <Tabs defaultValue="receipt" className="mt-2">
+      <TabsList className="w-full">
+        <TabsTrigger value="receipt" className="flex-1">
+          Receipt
+        </TabsTrigger>
+        <TabsTrigger value="disbursement" className="flex-1">
+          Disbursement
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="receipt">
+        <ReceiptForm onDone={onDone} />
+      </TabsContent>
+      <TabsContent value="disbursement">
+        <DisbursementForm onDone={onDone} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function ReceiptForm({ onDone }: { onDone: () => void }) {
+  const addReceipt = useAddReceipt();
+  const [customCategory, setCustomCategory] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+    reset,
+  } = useForm<NewReceiptFormValues>({
+    resolver: zodResolver(newReceiptSchema),
+    defaultValues: {
+      store: "",
+      category: "",
+      price: 0,
+      discount: 0,
+      discount_percentage: 0,
+      note: "",
+      date: todayISO(),
+    },
+  });
+
+  const category = watch("category");
+  const isKnownCategory = (CATEGORY_OPTIONS as readonly string[]).includes(category);
+
+  async function onSubmit(values: NewReceiptFormValues) {
+    try {
+      await addReceipt.mutateAsync(values);
+      toast.success(`Receipt added: ${values.store} — $${values.price.toFixed(2)}`);
+      reset({
+        store: "",
+        category: "",
+        price: 0,
+        discount: 0,
+        discount_percentage: 0,
+        note: "",
+        date: values.date,
+      });
+      setCustomCategory(false);
+      onDone();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add receipt");
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="r-store">Store</Label>
+        <Input id="r-store" {...register("store")} />
+        {errors.store && <p className="text-xs text-destructive">{errors.store.message}</p>}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="r-category">Category</Label>
+        {!customCategory ? (
+          <Select
+            value={isKnownCategory ? category : undefined}
+            onValueChange={(v) => {
+              if (v === "__other__") {
+                setCustomCategory(true);
+                setValue("category", "", { shouldValidate: true });
+              } else {
+                setValue("category", v, { shouldValidate: true });
+              }
+            }}
+          >
+            <SelectTrigger id="r-category" className="w-full">
+              <SelectValue placeholder="Select a category" />
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORY_OPTIONS.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+              <SelectItem value="__other__">Other (type your own)</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input id="r-category" placeholder="Category" autoFocus {...register("category")} />
+        )}
+        {errors.category && (
+          <p className="text-xs text-destructive">{errors.category.message}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="r-price">Price ($)</Label>
+          <Input id="r-price" type="number" step="0.01" {...register("price")} />
+          {errors.price && <p className="text-xs text-destructive">{errors.price.message}</p>}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="r-date">Date</Label>
+          <Input id="r-date" type="date" {...register("date")} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="r-discount">Discount ($)</Label>
+          <Input id="r-discount" type="number" step="0.01" {...register("discount")} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="r-discount-pct">Discount (%)</Label>
+          <Input
+            id="r-discount-pct"
+            type="number"
+            step="0.1"
+            {...register("discount_percentage")}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="r-note">Note (optional)</Label>
+        <Input id="r-note" {...register("note")} />
+      </div>
+
+      <Button type="submit" disabled={addReceipt.isPending} className="mt-2">
+        {addReceipt.isPending ? "Adding…" : "Add receipt"}
+      </Button>
+    </form>
+  );
+}
+
+function DisbursementForm({ onDone }: { onDone: () => void }) {
+  const addDisbursement = useAddDisbursement();
+  const { data: receipts } = useMergedReceipts();
+  const [comboOpen, setComboOpen] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+    reset,
+  } = useForm<NewDisbursementFormValues>({
+    resolver: zodResolver(newDisbursementSchema),
+    defaultValues: {
+      entity: "",
+      amount: 0,
+      date_received: todayISO(),
+      reason: "",
+      refunded_from_receipt: null,
+    },
+  });
+
+  const refundedFromReceipt = watch("refunded_from_receipt");
+  const linkedReceipt = receipts?.find((r) => r.id === refundedFromReceipt);
+
+  async function onSubmit(values: NewDisbursementFormValues) {
+    try {
+      await addDisbursement.mutateAsync(values);
+      toast.success(`Disbursement added: ${values.entity} — $${values.amount.toFixed(2)}`);
+      reset({
+        entity: "",
+        amount: 0,
+        date_received: values.date_received,
+        reason: "",
+        refunded_from_receipt: null,
+      });
+      onDone();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add disbursement");
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="d-entity">Entity</Label>
+        <Input id="d-entity" {...register("entity")} />
+        {errors.entity && <p className="text-xs text-destructive">{errors.entity.message}</p>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="d-amount">Amount ($)</Label>
+          <Input id="d-amount" type="number" step="0.01" {...register("amount")} />
+          {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="d-date">Date received</Label>
+          <Input id="d-date" type="date" {...register("date_received")} />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="d-reason">Reason (optional)</Label>
+        <Input id="d-reason" {...register("reason")} />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label>Refund of receipt (optional)</Label>
+        <Popover open={comboOpen} onOpenChange={setComboOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              role="combobox"
+              className="w-full justify-between font-normal"
+            >
+              <span className="truncate">
+                {linkedReceipt
+                  ? `${linkedReceipt.date} · ${linkedReceipt.store} · $${linkedReceipt.price.toFixed(2)}`
+                  : "Not linked to a receipt"}
+              </span>
+              <ChevronsUpDown className="opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[320px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search receipts…" />
+              <CommandList>
+                <CommandEmpty>No receipts found.</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    onSelect={() => {
+                      setValue("refunded_from_receipt", null);
+                      setComboOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 size-4",
+                        refundedFromReceipt == null ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    Not linked
+                  </CommandItem>
+                  {(receipts ?? []).map((r) => (
+                    <CommandItem
+                      key={r.id}
+                      value={`${r.date} ${r.store} ${r.category} ${r.id}`}
+                      onSelect={() => {
+                        setValue("refunded_from_receipt", r.id, { shouldValidate: true });
+                        setComboOpen(false);
+                      }}
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 size-4",
+                          refundedFromReceipt === r.id ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      <span className="truncate">
+                        {r.date} · {r.store} · ${r.price.toFixed(2)}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      <Button type="submit" disabled={addDisbursement.isPending} className="mt-2">
+        {addDisbursement.isPending ? "Adding…" : "Add disbursement"}
+      </Button>
+    </form>
+  );
+}
