@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 
+import { requireOwnerForApi } from "@/lib/auth-server";
 import { getDataSource } from "@/lib/data/source";
 import { newDisbursementSchema } from "@/lib/data/schemas";
 
+// Route handlers can be hit directly without ever passing through middleware,
+// so every one re-checks authorization itself — including the reads.
 export async function GET() {
+  const denied = await requireOwnerForApi();
+  if (denied) return denied;
+
   try {
     const source = await getDataSource();
     const data = await source.loadDisbursements();
@@ -17,6 +23,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireOwnerForApi();
+  if (denied) return denied;
+
   const body = await request.json().catch(() => null);
   const parsed = newDisbursementSchema.safeParse(body);
   if (!parsed.success) {

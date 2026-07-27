@@ -1,6 +1,7 @@
 "use client";
 
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { useMemo } from "react";
+import { Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { formatCurrency } from "@/lib/format";
 
@@ -20,21 +21,26 @@ export function CategoryPieChart({
 }) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
+  // Recharts 3 deprecated <Cell> (removed in 4.0). A per-datum `fill` is the
+  // replacement here rather than a `shape` render prop, because Recharts also
+  // reads it for the legend swatch and the tooltip colour — a custom `shape`
+  // would only recolour the sector and leave the legend grey.
+  const coloredData = useMemo(
+    () => data.map((d) => ({ ...d, fill: colorMap[d.category] ?? "#888" })),
+    [data, colorMap],
+  );
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <PieChart>
         <Pie
-          data={data}
+          data={coloredData}
           dataKey="value"
           nameKey="category"
           innerRadius="45%"
           outerRadius="80%"
           paddingAngle={1}
-        >
-          {data.map((d) => (
-            <Cell key={d.category} fill={colorMap[d.category] ?? "#888"} />
-          ))}
-        </Pie>
+        />
         <Tooltip
           content={({ active, payload }) => {
             if (!active || !payload?.length) return null;

@@ -1,63 +1,166 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import type { User } from "@supabase/supabase-js";
 
+import { isOwnerUserId } from "@/lib/auth";
+import { requireEnv } from "@/lib/env";
+
+// Deny by default: this lists what is public, so a new route is protected the
+// moment it exists. /login must stay public for the not-yet-authorized case
+// below, and /auth/callback because the user has no session yet when they hit
+// it (the PKCE code verifier cookie is all they carry).
 const PUBLIC_PATHS = ["/login", "/auth/callback"];
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+type CookieWrite = { name: string; value: string; options: CookieOptions };
+
+/**
+ * Process-wide single-flight for the getUser() call below, keyed by the
+ * request's raw Cookie header. Without it, two requests arriving with the same
+ * near-expiry session (a page load plus a client component's own fetch) can
+ * each redeem the same refresh token at once. One redemption wins; the loser
+ * ends up with a mismatched access/refresh pair, which PostgREST rejects as
+ * `PGRST303: "JWT issued at future"`. Same class of bug that server.ts's
+ * cache() fixes within a request, one layer up across requests.
+ *
+ * Only the first request for a given cookie snapshot calls Supabase;
+ * concurrent requests with byte-identical cookies await and reuse its result. A
+ * different cookie snapshot (different tab, no session) gets its own flight, so
+ * session state is never shared across different sessions.
+ *
+ * In-process only — resets on cold start, doesn't coordinate across instances.
+ * Fine for a single-user app, not a distributed lock. Next's proxy docs warn
+ * against relying on module-level globals here (a proxy may be deployed to the
+ * CDN edge, separate from the render runtime); that's fine because this is a
+ * pure optimization — when the map is empty every request simply takes its own
+ * flight, which is the un-deduplicated behaviour.
+ */
+const inFlightByCookieKey = new Map<
+  string,
+  Promise<{
+    user: User | null;
+    cookieWrites: CookieWrite[];
+    noStoreHeaders: Record<string, string>;
+  }>
+>();
+
+async function getUserSingleFlight(request: NextRequest) {
+  const key = request.headers.get("cookie") ?? "";
+  const existing = inFlightByCookieKey.get(key);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    const cookieWrites: CookieWrite[] = [];
+    // @supabase/ssr hands us the no-cache headers that must accompany any
+    // response carrying refreshed auth cookies — without them a CDN or edge
+    // cache can hand one visitor's session token to another.
+    let noStoreHeaders: Record<string, string> = {};
+
+    const supabase = createServerClient(
+      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
+      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet: CookieWrite[], headers: Record<string, string>) {
+            cookieWrites.push(...cookiesToSet);
+            noStoreHeaders = { ...noStoreHeaders, ...headers };
+          },
         },
       },
-    }
-  );
+    );
 
-  // IMPORTANT: do not run any logic between createServerClient and
-  // supabase.auth.getUser() — it refreshes the session token and writes the
-  // new cookie via setAll above.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    // getUser() revalidates the token against the Supabase Auth server, unlike
+    // getSession() which just reads the (possibly stale, possibly forged)
+    // cookie. Removing this call silently expires sessions.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  const isPublicPath = PUBLIC_PATHS.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
-  );
+    return { user, cookieWrites, noStoreHeaders };
+  })();
 
-  if (!user && !isPublicPath) {
-    // API routes get a JSON 401, not an HTML redirect — a `fetch()` call
-    // following a redirect to the /login page would otherwise fail trying
-    // to parse HTML as JSON.
-    if (request.nextUrl.pathname.startsWith("/api/")) {
+  inFlightByCookieKey.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightByCookieKey.delete(key);
+  }
+}
+
+export async function updateSession(request: NextRequest) {
+  // Rebuilt on each call (not hoisted) so it reflects request.cookies as of
+  // that moment — mutated below once we know whether there are writes.
+  function nextResponse() {
+    return NextResponse.next({
+      request: { headers: new Headers(request.headers) },
+    });
+  }
+
+  const { user, cookieWrites, noStoreHeaders } =
+    await getUserSingleFlight(request);
+
+  // Carry any refreshed session cookies onto every response we might return,
+  // including the early-return redirects below. Without this a request that
+  // both refreshes and redirects throws the new token away, so the next
+  // request refreshes again from the same already-rotated refresh token.
+  function withRefreshedSession(res: NextResponse): NextResponse {
+    cookieWrites.forEach(({ name, value, options }) =>
+      res.cookies.set(name, value, options),
+    );
+    Object.entries(noStoreHeaders).forEach(([k, v]) => res.headers.set(k, v));
+    return res;
+  }
+
+  let response = nextResponse();
+  if (cookieWrites.length > 0) {
+    cookieWrites.forEach(({ name, value }) => request.cookies.set(name, value));
+    response = withRefreshedSession(nextResponse());
+  }
+
+  const { pathname } = request.nextUrl;
+  const isApi = pathname.startsWith("/api/");
+  const authorized = isOwnerUserId(user?.id);
+
+  // The proxy is UX, not the security boundary: it protects navigation, but
+  // route handlers can be hit directly, so each one re-checks via
+  // requireOwnerForApi(). The checks are duplicated here so an unauthorized
+  // visitor gets a login page instead of a working shell that errors on every
+  // panel.
+  if (!user && !isPublicPath(pathname)) {
+    // API routes get JSON, not an HTML redirect — a `fetch()` following a
+    // redirect to /login would otherwise fail parsing HTML as JSON.
+    if (isApi) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", request.nextUrl.pathname);
-    return NextResponse.redirect(url);
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", pathname);
+    return withRefreshedSession(NextResponse.redirect(loginUrl));
   }
 
-  if (user && request.nextUrl.pathname === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
-    return NextResponse.redirect(url);
+  // Signed in against the shared Supabase project but not on this app's
+  // allowlist. /login stays reachable so they can read their user id off it
+  // (the bootstrap flow) and sign out — redirecting them there while also
+  // bouncing them off it would loop.
+  if (user && !authorized && !isPublicPath(pathname)) {
+    if (isApi) {
+      return withRefreshedSession(
+        NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+      );
+    }
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("error", "forbidden");
+    return withRefreshedSession(NextResponse.redirect(loginUrl));
   }
 
-  return supabaseResponse;
+  if (authorized && pathname === "/login") {
+    return withRefreshedSession(NextResponse.redirect(new URL("/", request.url)));
+  }
+
+  return response;
 }

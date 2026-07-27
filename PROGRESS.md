@@ -9,7 +9,7 @@ Rolling log of what's been built, what's in progress, and what's next. **Update 
 See `migration.md` for the full record of migration-time decisions (data layer design, auth approach, palette derivation, package version pins, etc). Key ones repeated here for quick reference:
 
 - [x] Data source: Supabase (`finance_tracker` schema), with a `better-sqlite3` local-dev-only alternate behind `DATA_SOURCE` env var.
-- [x] Auth: Supabase Auth, Google + GitHub OAuth, single authorized user enforced via RLS (user's responsibility on the Supabase side).
+- [x] Auth: Supabase Auth, **Google OAuth only**, against the **shared** Supabase project the other personal apps use. Because `auth.users` is a shared pool, a valid session proves identity but not access — authorization is a per-app `OWNER_USER_IDS` env allowlist (`src/lib/auth.ts`), on top of RLS. Reworked to match the shared-project auth guide; see "Auth rework" under Done.
 - [x] Charts: Recharts, except the Monthly page's category×month heatmap (hand-built CSS grid).
 - [x] Filter persistence: Zustand + localStorage, not URL params.
 - [x] Category color palette: dataviz-skill-derived, brand-tuned (turquoise/blue/violet substituted into a validated 8-hue categorical anchor), tinted extension for categories 9-12, cycling beyond that.
@@ -20,7 +20,7 @@ See `migration.md` for the full record of migration-time decisions (data layer d
 - **Full Next.js migration (this session)** — entire app rebuilt from the Streamlit original:
   - Root scaffold: `package.json` (pnpm, pinned-latest versions), `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`, `components.json`.
   - `src/components/ui/*` — hand-authored shadcn/ui primitives (button, card, input, label, dialog, drawer, tabs, select, checkbox, popover, command, table, sonner, badge, separator).
-  - Auth: `src/lib/supabase/{client,server,middleware}.ts`, `src/middleware.ts`, `/login`, `/auth/callback`.
+  - Auth: `src/lib/supabase/{client,server,middleware}.ts`, `src/middleware.ts`, `/login`, `/auth/callback`. (Since reworked — see the auth entries below; `src/middleware.ts` is now `src/proxy.ts`, and `client.ts` is gone.)
   - Data layer: `src/lib/data/{types,merge,source,supabase-source,sqlite-source,schemas}.ts`.
   - Shared logic ports: `src/lib/colors.ts`, `src/lib/filters.ts`, `src/lib/savings.ts`, `src/lib/dates.ts`, `src/lib/format.ts`.
   - State: `src/store/filters-store.ts` (+ `FiltersHydrator` for SSR-safe rehydration), `src/hooks/use-finance-data.ts`, `src/hooks/use-filtered-receipts.ts`, `src/hooks/use-category-colors.ts`.
@@ -31,25 +31,61 @@ See `migration.md` for the full record of migration-time decisions (data layer d
   - `scripts/migrate-sqlite-to-supabase.ts` — one-time backfill script (not yet run — needs your Supabase credentials).
   - `.env.example`, rewrote `CLAUDE.md` for the new stack, moved `app.py`/`pages/`/`finance_tracker/`/`config.py`/`SPEC.md`/`.venv`/`requirements.txt`/`run.sh` into `legacy_streamlit/`.
 
+- **Recharts `<Cell>` deprecation + a monthly-page type error (this session)**
+  - `<Cell>` is deprecated in Recharts 3 and removed in 4.0. Replaced in `src/components/charts/category-pie-chart.tsx` and `src/components/charts/single-series-bar-chart.tsx` with a per-datum `fill` on the chart data. Chose that over the officially-suggested `shape` render prop because Recharts also reads `fill` off the datum for the **legend swatch and tooltip colour** — a custom `shape` only recolours the mark and leaves the legend grey. No other `<Cell>` usages exist (the other hits are shadcn `TableCell`).
+  - `src/app/monthly/page.tsx` heatmap accumulation: `values[r.category] ??= {}` assigns but doesn't narrow the index expression, so the following `values[r.category][m]` was still "possibly undefined" under `noUncheckedIndexedAccess`. Bound the row to a local instead.
+
+- **Auth rework to the shared-project pattern (this session)** — Supabase Auth realigned with the shared-Supabase-project auth guide, Google-only:
+  - New `src/lib/env.ts` (`requireEnv`), `src/lib/auth.ts` (edge-safe `sanitizeNextPath` / `ownerUserIds` / `isOwnerUserId`), `src/lib/auth-server.ts` (`server-only`: `getSessionUser`, `isOwner`, `requireUser`, `requireOwnerForApi`).
+  - `src/lib/supabase/server.ts` is now `cache()`-wrapped and `server-only`, so concurrent queries in one request share a client instead of racing to redeem the same refresh token (`PGRST303: JWT issued at future`).
+  - `src/lib/supabase/middleware.ts`: process-wide single-flight around `getUser()` keyed on the raw Cookie header (same race, one layer up); exact-match `PUBLIC_PATHS` instead of loose `startsWith`; owner-allowlist check so an unauthorized visitor gets the login page rather than a shell that errors on every panel; refreshed cookies + Supabase's no-store headers now ride along on the early-return redirects too.
+  - New `src/lib/supabase/actions.ts` — `signInWithGoogle` / `signOut` Server Actions. Sign-in moved off the browser client so the PKCE verifier cookie is written server-side. **Keep the `?apikey=` query param appended to the authorize URL** — without it Supabase's gateway answers "No API key found in request"; it looks removable and isn't.
+  - `/login` is now a Server Component: it prints your Supabase user id so you can bootstrap `OWNER_USER_IDS`, handles the `?error=auth` / not-authorized states, and is `robots: noindex`. New `src/components/auth/{google-sign-in-button,sign-out-button}.tsx`; `src/components/nav.tsx` signs out through the action.
+  - Both API routes now start with `await requireOwnerForApi()` (401/403 JSON) — middleware only protects navigation, route handlers can be hit directly.
+  - Env: added `OWNER_USER_IDS` and `NEXT_PUBLIC_SITE_URL`; renamed `SUPABASE_SERVICE_ROLE_KEY` → `SUPABASE_SECRET_KEY` (same Postgres role, but the new-style `sb_secret_…` key is independently revocable). It is now a runtime requirement in every environment, not just for the backfill — see the Pattern A entry below.
+
+- **Moved the data layer to Pattern A: server-only, secret-key-only (this session)** — new `supabase/migrations/finance_tracker_schema.sql`, superseding the schema SQL in `migration.md` §6.
+  - **Why.** All fetching is already server-side — the browser never talks to Supabase, only to `/api/receipts` and `/api/disbursements`. Given that, per-user RLS (`auth.uid() = user_id`) buys nothing: queries arrive as `service_role`, which bypasses RLS unconditionally, so the policies would never be evaluated by anything the app does. They'd be dead code requiring a `user_id` column on every row for an app with exactly one user. auth.md §11 says this is "usually the better call" for owner-only tools, and it also sidesteps the two-identities-two-UUIDs footgun in §10 entirely.
+  - **What protects the data now, in order:** (1) `anon`/`authenticated` hold no privileges on `finance_tracker`, so a request with the public anon key gets `42501` even though the schema is exposed to PostgREST; (2) `enable row level security` with **zero policies** as the backstop, so a stray `grant` doesn't silently publish anything; (3) `OWNER_USER_IDS` in app code.
+  - **RLS stays *enabled*, just without policies.** That distinction is the whole point of the pattern — "RLS off" and "RLS on, zero policies" look identical today and diverge the moment a privilege leaks in. `finance_tracker` has to stay an exposed schema for PostgREST to serve it at all, and the anon key ships in every browser bundle on the shared project.
+  - Two latent hard failures fixed along the way: **no grants on the schema** (a custom schema inherits none of the defaults Supabase attaches to `public`, so every request would have died `42501` before reaching RLS), and **`generated always as identity`**, which rejects the explicit `id` values the backfill needs to preserve the SQLite ids that `refunded_from_receipt` points at (`428C9`; PostgREST can't emit `overriding system value`). Now `generated by default`.
+  - Dropped `user_id` from both tables — nothing to scope against under Pattern A. `MIGRATION_USER_ID` is gone from the backfill script and `.env.example`; the backfill no longer requires you to have signed in first.
+  - Privileges narrowed to **select + insert** — the app issues no UPDATE or DELETE anywhere, so even a leaked secret key can't rewrite or destroy history through PostgREST. §6 of the migration file has the grant to add if you build edit/delete UI, plus a `curl` that verifies the anon key really is locked out (expect permission-denied, **not** an empty array — an empty array would mean privileges are open and only RLS is holding).
+  - **The trade you're accepting:** `requireOwnerForApi()` is now the *only* thing separating you from any other signed-in user on the shared project. A route handler that forgets it is public, with no database backstop. Both handlers have it; that's the invariant to keep.
+
+- **`middleware.ts` → `proxy.ts` (this session)** — Next 16 deprecated the `middleware` file convention in favour of `proxy`, which is what `pnpm dev` was warning about. `src/middleware.ts` is now `src/proxy.ts` and the export is renamed `middleware` → `proxy`; `config.matcher` is unchanged. Next *errors* if both files exist, so this had to be a move. Two things worth knowing: **proxy always runs on the Node.js runtime** (which retires any question about dynamic `process.env[name]` lookups via `requireEnv`, and about `OWNER_USER_IDS` reaching an edge bundle), and route segment config such as `export const runtime` is not allowed in the file. The session-refresh helper stays at `src/lib/supabase/middleware.ts` — it isn't a Next convention file, and that path is what the shared auth guide names, so renaming it would desync this repo from the others. There's an official codemod (`npx @next/codemod@latest middleware-to-proxy .`) if you'd rather use it elsewhere; the manual edit here is two lines.
+
+- **Code rewiring for Pattern A (this session)** — new `src/lib/supabase/service.ts` (`server-only`, `persistSession: false`); `src/lib/data/source.ts` now builds `SupabaseDataSource` from the secret-key client and no longer needs a Next.js request scope; `src/lib/supabase/server.ts` is now **auth-only** (session reads, OAuth, sign-out) and never touches data. `supabase-source.ts` needed no query changes — it never referenced `user_id`.
+
 ## In progress
 
-_Nothing — full build complete. Awaiting your setup steps below before it can actually run._
+_Nothing._
+
+## Needs your attention (auth rework)
+
+- **`src/types/database.ts` was not generated** — it needs `npx supabase gen types typescript --project-id <ref>`, which I can't run. The Supabase clients are therefore untyped (no `<Database>` generic), which is a working state, not a broken import. Add the generic everywhere if you generate it later.
+- **Schema shape deviates from the guide on purpose.** The guide says "one `public` schema, prefix every table with the app name"; this app uses a dedicated `finance_tracker` schema (`migration.md` §6), which solves the same collision problem more cleanly. Consequence: `finance_tracker` must be in the project's **exposed schemas** API setting or every call 404s. Say the word if you'd rather move to prefixed `public` tables.
+- **`SUPABASE_SECRET_KEY` is now a live credential in the running app,** not just a one-off script input. Set it in Vercel for all three environments, and treat a leak as full data access — it bypasses RLS by design. It is reachable only through `src/lib/supabase/service.ts`, which is `server-only` so a client-component import fails the build rather than shipping the key.
+- **Run `supabase/migrations/finance_tracker_schema.sql`, not `migration.md` §6.** After running it, verify the lockout with the `curl` in §6 of that file — a permission-denied error is the pass condition; an empty array means privileges are open and only RLS is holding.
 
 ## Backlog — your steps to bring this online
 
-These need your Supabase account access, which Claude doesn't have:
+These need your Supabase / GCP / Vercel account access, which Claude doesn't have. Steps 1–3 are the ones the auth guide calls out as easy to get wrong.
 
-1. Create (or pick an existing) Supabase project. Enable Google + GitHub OAuth providers.
-2. Run the schema SQL from `migration.md` §6 (creates the `finance_tracker` schema, tables, RLS policies).
-3. In Supabase project settings, add `finance_tracker` to the exposed schemas for the API (it's not exposed by default — only `public` is).
-4. Copy `.env.example` to `.env.local`, fill in `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-5. Run `pnpm install` (already done once during the build, but re-run to be sure), then `pnpm dev` and sign in once via `/login` — this creates your `auth.users` row.
-6. Add your own single-user restriction in Supabase (RLS allow-list / provider config — your call how, per `migration.md` §5).
-7. Get your `auth.users` id (Supabase dashboard → Authentication → Users) and run the migration script:
-   `SQLITE_DB_PATH=... NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... MIGRATION_USER_ID=... pnpm migrate:sqlite-to-supabase`
+1. **Supabase → Authentication → URL Configuration → Redirect URLs.** Add every origin this app finishes sign-in on:
+   `https://<this-app>.kylehagerman.dev/auth/callback`, `https://<this-app>.vercel.app/auth/callback`, `https://*-<vercel-scope>.vercel.app/auth/callback`, `http://localhost:3000/auth/callback`.
+   Miss one and Supabase silently falls back to the project-wide **Site URL**, which belongs to a *different* app — so sign-in "works" but lands you on the wrong domain. **Do not change the Site URL**, and do not add a second keep-alive cron (personal-website's covers the project).
+2. **Confirm Google is enabled** under Authentication → Providers. It's project-wide and should already be on from the first app — do *not* create a second GCP OAuth client for this app. If the GCP consent screen is still in *Testing*, publish it, or Google-issued refresh tokens expire every 7 days.
+3. Run `supabase/migrations/finance_tracker_schema.sql` (SQL Editor → New query → paste → Run), **not** the older SQL in `migration.md` §6 — see that section's note for why. Then add `finance_tracker` to the project's **exposed schemas** API setting (only `public` is exposed by default, and without this every request 404s).
+4. Copy `.env.example` → `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL` and **`SUPABASE_SECRET_KEY`** (the app itself needs this one now, not just the script). Leave `OWNER_USER_IDS` blank for now.
+5. `pnpm install`, `pnpm dev`, visit `/login`, sign in with Google. Because the allowlist is empty you'll land back on `/login` with your user id printed — that's the bootstrap path working, not a bug.
+6. Put that UUID in `OWNER_USER_IDS` and restart. You should now reach `/`.
+7. Run the backfill (no user id needed any more):
+   `SQLITE_DB_PATH=... NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SECRET_KEY=... pnpm migrate:sqlite-to-supabase`
    then run the two `setval(...)` statements it prints, in the Supabase SQL editor.
-8. Run `pnpm dev` and click through all 6 pages + quick-add — this hasn't been runtime-tested yet (Claude can't run `pnpm dev`/`build` under this session's constraints). Report back anything broken.
-9. When ready, deploy to Vercel (new project, same env vars as `.env.local` except `DATA_SOURCE`/`SQLITE_DB_PATH` which should stay unset in production).
+8. Click through all 6 pages + quick-add — none of this has been runtime-tested (Claude can't run `pnpm dev`/`build` under this session's constraints). Report back anything broken.
+9. Deploy to Vercel and mirror **every** env var into Production, Preview *and* Development — `.env.local` is local only, and auth working locally but 401ing on Vercel is almost always this. `DATA_SOURCE`/`SQLITE_DB_PATH` stay unset in production.
+10. Verify in a private window that a protected route 302s to `/login`, and that sign-out clears the session.
 
 ## Follow-ups
 

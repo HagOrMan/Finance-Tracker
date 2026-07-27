@@ -2,15 +2,16 @@
  * One-time migration: local SQLite (receipts/disbursements) -> Supabase.
  *
  * NOT run automatically as part of the app or its build. Run this manually,
- * once, after you've: created the Supabase project, applied the schema in
- * migration.md §6, enabled Google/GitHub auth providers, and signed in at
- * least once via the app's /login so an `auth.users` row exists for you.
+ * once, after applying supabase/migrations/finance_tracker_schema.sql and
+ * adding `finance_tracker` to the project's exposed schemas.
+ *
+ * The rows carry no owner column — these are Pattern A tables reachable only
+ * by the secret key — so this doesn't need you to have signed in first.
  *
  * Usage:
  *   SQLITE_DB_PATH="C:\path\to\secret_finances.db" \
  *   NEXT_PUBLIC_SUPABASE_URL="https://xxxx.supabase.co" \
- *   SUPABASE_SERVICE_ROLE_KEY="..." \
- *   MIGRATION_USER_ID="<your auth.users id, from the Supabase dashboard>" \
+ *   SUPABASE_SECRET_KEY="..." \
  *     pnpm migrate:sqlite-to-supabase
  */
 
@@ -37,8 +38,9 @@ function chunk<T>(items: T[], size: number): T[][] {
 async function main() {
   const dbPath = requireEnv("SQLITE_DB_PATH");
   const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const userId = requireEnv("MIGRATION_USER_ID");
+  // New-style `sb_secret_…` key (or the legacy service_role JWT — same
+  // Postgres role, but the new one can be revoked independently).
+  const secretKey = requireEnv("SUPABASE_SECRET_KEY");
 
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   const receipts = db.prepare("SELECT * FROM receipts").all() as Receipt[];
@@ -49,10 +51,12 @@ async function main() {
     `Read ${receipts.length} receipts and ${disbursements.length} disbursements from ${dbPath}`
   );
 
-  // Service role key bypasses RLS — required here since this is an admin
-  // backfill, never used by the app itself (see migration.md §13).
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
+  // Its own client rather than src/lib/supabase/service.ts, which is
+  // `server-only` and so unimportable from a plain tsx script.
+  // `persistSession: false` keeps it from writing session state that could
+  // collide with a real user session.
+  const supabase = createClient(supabaseUrl, secretKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
   });
 
   for (const batch of chunk(receipts, BATCH_SIZE)) {
@@ -65,7 +69,6 @@ async function main() {
       discount_percentage: r.discount_percentage ?? 0,
       note: r.note,
       date: r.date,
-      user_id: userId,
     }));
     const { error } = await supabase.schema(SCHEMA).from("receipts").insert(rows);
     if (error) throw new Error(`Failed to insert receipts batch: ${error.message}`);
@@ -80,7 +83,6 @@ async function main() {
       date_received: d.date_received,
       reason: d.reason,
       refunded_from_receipt: d.refunded_from_receipt,
-      user_id: userId,
     }));
     const { error } = await supabase.schema(SCHEMA).from("disbursements").insert(rows);
     if (error) throw new Error(`Failed to insert disbursements batch: ${error.message}`);

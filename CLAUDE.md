@@ -4,7 +4,7 @@ This file is the entry point for Claude Code. Read this first, every session, be
 
 ## What this project is
 
-A personal finance tracker — a **Next.js (App Router) + React** app deployed on Vercel, matching the visual language of the user's personal site (turquoise `lush` primary, blue `breeze` secondary, purple `nebula` for extreme cases — see `src/app/globals.css`, already in place, don't redesign it). Data lives in **Supabase** (Postgres), single-user, gated by Supabase Auth (Google + GitHub OAuth) and Postgres RLS. A local **SQLite** data source is also supported for offline dev only (see "Data layer" below) — it is never used in production.
+A personal finance tracker — a **Next.js (App Router) + React** app deployed on Vercel, matching the visual language of the user's personal site (turquoise `lush` primary, blue `breeze` secondary, purple `nebula` for extreme cases — see `src/app/globals.css`, already in place, don't redesign it). Data lives in **Supabase** (Postgres), single-user, gated by Supabase Auth (**Google OAuth only**) plus an `OWNER_USER_IDS` allowlist. The Supabase project is **shared with the user's other apps**, so `auth.users` is a shared pool: a valid session proves identity, not access — authorization is per-app and lives in `src/lib/auth.ts` / `src/lib/auth-server.ts`. All data access is server-side via the secret key; see the Pattern A hard rule below. A local **SQLite** data source is also supported for offline dev only (see "Data layer" below) — it is never used in production.
 
 This was migrated from an earlier Streamlit/Python version of the same app. That version is preserved untouched in `legacy_streamlit/` (its own `CLAUDE.md`-equivalent context is `legacy_streamlit/SPEC.md`) as a fallback/reference — don't edit it as part of Next.js work. **`migration.md`** is the full record of that migration: every architectural decision, why, and what was flagged for follow-up. Read it once for context; it does not need re-reading every session.
 
@@ -30,30 +30,40 @@ This was migrated from an earlier Streamlit/Python version of the same app. That
 
 ## Project layout
 
-Everything that would normally sit in a bare `app/` etc. lives under `src/` (App Router pages, `components/`, `lib/`, `hooks/`, `store/`, and `middleware.ts` — Next.js's own convention when a `src/` dir is used). Standard Next.js root files (`package.json`, `next.config.ts`, `tsconfig.json`, `postcss.config.mjs`, `components.json`, `.env*`) stay at the repository root. Full tree in `migration.md` §4.
+Everything that would normally sit in a bare `app/` etc. lives under `src/` (App Router pages, `components/`, `lib/`, `hooks/`, `store/`, and `proxy.ts` — Next.js's own convention when a `src/` dir is used). Standard Next.js root files (`package.json`, `next.config.ts`, `tsconfig.json`, `postcss.config.mjs`, `components.json`, `.env*`) stay at the repository root. Full tree in `migration.md` §4.
 
 ```
 src/
 ├── app/                  # routes: /, /daily, /monthly, /categories, /savings, /disbursements,
 │                         # /login, /auth/callback, /api/receipts, /api/disbursements
 ├── components/           # shared components; components/ui/ = shadcn primitives;
-│                         # components/charts/ = Recharts wrappers
+│                         # components/charts/ = Recharts wrappers;
+│                         # components/auth/ = Google sign-in / sign-out buttons
 ├── hooks/                # use-finance-data (react-query), use-filtered-receipts,
 │                         # use-category-colors, use-media-query
 ├── lib/
 │   ├── data/             # types, DataSource interface, supabase-source, sqlite-source, schemas (zod)
-│   ├── supabase/         # client.ts (browser), server.ts (RSC/route handlers), middleware.ts
+│   ├── supabase/         # server.ts (cookie client — AUTH ONLY), middleware.ts,
+│   │                     # actions.ts (signInWithGoogle / signOut Server Actions),
+│   │                     # service.ts (secret key — the only client that reads data)
+│   ├── auth.ts           # edge-safe: sanitizeNextPath, OWNER_USER_IDS allowlist
+│   ├── auth-server.ts    # server-only guards: getSessionUser, isOwner, requireUser, requireOwnerForApi
+│   ├── env.ts            # requireEnv (server-safe only — dynamic key)
 │   ├── colors.ts         # category -> color map (see migration.md §11 for palette derivation)
 │   ├── filters.ts        # Filters type, apply logic, price col/label helpers
 │   ├── savings.ts        # savings formula
 │   └── dates.ts          # ISO-week bucketing, day-math — all on plain "YYYY-MM-DD" strings
 ├── store/filters-store.ts
-└── middleware.ts         # auth gate; redirects unauthenticated page loads to /login, 401s API calls
+└── proxy.ts              # Next 16's rename of `middleware.ts` — must export `proxy`.
+                          # Deny-by-default auth gate; redirects unauthorized page
+                          # loads to /login, 401s/403s API calls. Node.js runtime.
 ```
 
 ## Hard rules
 
-- **RLS is the real access boundary, not app code.** Every Supabase read/write goes through a per-request client built from the caller's session cookie (`src/lib/supabase/server.ts`); never use the service-role key outside `scripts/migrate-sqlite-to-supabase.ts`. Never import that key into anything that ships to the client.
+- **The finance tables are Pattern A: server-only, secret-key-only.** Nothing in the browser ever talks to Supabase. Reads and writes go route handler → `getDataSource()` → `src/lib/supabase/service.ts` (secret key, RLS bypassed). `anon`/`authenticated` hold **no** privileges on `finance_tracker`, and RLS is enabled with **zero policies** as the backstop. Don't add RLS policies — under `service_role` they'd be dead code, and wanting one means the model changed. Schema, grants and RLS live in `supabase/migrations/finance_tracker_schema.sql` — **that file, not `migration.md` §6**, is the source of truth. Any new table gets an explicit `service_role` grant (a custom schema inherits none) plus `enable row level security`.
+- **`SUPABASE_SECRET_KEY` may only be reached through `src/lib/supabase/service.ts`.** That file is `server-only`, which turns a client-component import into a build error. Never prefix it `NEXT_PUBLIC_`, never import it anywhere else. `src/lib/supabase/server.ts` (cookie client) is for **auth only** — session reads, OAuth, sign-out — never for data.
+- **`OWNER_USER_IDS` is the *only* authorization gate,** and it fails closed when empty. Because queries reach Postgres as `service_role`, the database cannot tell one caller from another — there is no backstop. The proxy (`src/proxy.ts`) is UX only (navigation), so every route handler starts with `await requireOwnerForApi()` and every page/Server Action with `await requireUser()`, from `src/lib/auth-server.ts`. No exceptions for "it's just a read": a handler that omits the call is public. Always `getUser()`, never `getSession()`, on the server.
 - **The data layer is the only place that touches SQLite or Supabase directly.** Pages and components call `src/hooks/use-finance-data.ts` (which hits `/api/receipts` and `/api/disbursements`) or, server-side, `getDataSource()` from `src/lib/data/source.ts`. No inline `supabase.from(...)` calls in page components, no inline `better-sqlite3` calls anywhere but `src/lib/data/sqlite-source.ts`.
 - **`DATA_SOURCE` env var picks the data source** (`supabase` default, `sqlite` for local dev only). Production is always `supabase`.
 - **The category→color mapping is generated once** (`src/lib/colors.ts` + `src/hooks/use-category-colors.ts`) and is the only source every chart may use. Same category = same color, everywhere, in both light and dark mode.

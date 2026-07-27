@@ -1,10 +1,10 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -33,9 +33,20 @@ export function SingleSeriesBarChart({
   seriesName: string;
   height?: number;
 }) {
+  // Recharts 3 deprecated <Cell> (removed in 4.0); a per-datum `fill` on the
+  // chart data is the supported way to colour individual bars. Bars fall back
+  // to the <Bar fill> below when no `colorMap` is supplied.
+  const chartData = useMemo(
+    () =>
+      colorMap
+        ? data.map((d) => ({ ...d, fill: colorMap[d.x] ?? "#888" }))
+        : data,
+    [data, colorMap],
+  );
+
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+      <BarChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
         <XAxis
           dataKey="x"
@@ -53,10 +64,12 @@ export function SingleSeriesBarChart({
           cursor={{ fill: "var(--color-accent)" }}
           content={<ChartTooltip />}
         />
-        <Bar dataKey="y" name={seriesName} fill={color ?? "#888"} radius={[4, 4, 0, 0]}>
-          {colorMap &&
-            data.map((d) => <Cell key={d.x} fill={colorMap[d.x] ?? "#888"} />)}
-        </Bar>
+        <Bar
+          dataKey="y"
+          name={seriesName}
+          fill={color ?? "#888"}
+          radius={[4, 4, 0, 0]}
+        />
       </BarChart>
     </ResponsiveContainer>
   );

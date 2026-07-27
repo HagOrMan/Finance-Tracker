@@ -10,10 +10,16 @@ import type {
 } from "./types";
 import { mergeReceipts } from "./merge";
 
-// Dedicated schema (not `public`) — see migration.md §6 for rationale. Must
+// Dedicated schema (not `public`) — see migration.md §3 for rationale. Must
 // be added to Supabase's "exposed schemas" API setting or these calls 404.
 const SCHEMA = "finance_tracker";
 
+/**
+ * Expects the SECRET-key client from `src/lib/supabase/service.ts` — these
+ * tables grant nothing to `anon`/`authenticated`, so a session-scoped client
+ * gets `42501` on every call. Authorization happens before this class is
+ * reached; nothing here checks who is asking.
+ */
 export class SupabaseDataSource implements DataSource {
   constructor(private readonly supabase: SupabaseClient) {}
 

@@ -1,13 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { createClient } from "@/lib/supabase/client";
 import { APP_ICON, APP_TITLE } from "@/lib/config";
 
 const NAV_LINKS = [
@@ -21,14 +19,6 @@ const NAV_LINKS = [
 
 export function Nav() {
   const pathname = usePathname();
-  const router = useRouter();
-
-  async function signOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/75">
@@ -58,15 +48,7 @@ export function Nav() {
         </nav>
         <div className="flex shrink-0 items-center gap-1">
           <ThemeToggle />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={signOut}
-            aria-label="Sign out"
-          >
-            <LogOut />
-          </Button>
+          <SignOutButton variant="ghost" size="icon" iconOnly />
         </div>
       </div>
     </header>

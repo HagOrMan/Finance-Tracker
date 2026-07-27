@@ -145,6 +145,13 @@ This satisfies "everything that usually goes in `src/` goes in `src/`" while `mi
 
 ## 6. Supabase schema
 
+> **Superseded — run [`supabase/migrations/finance_tracker_schema.sql`](supabase/migrations/finance_tracker_schema.sql) instead.** The SQL below is kept as the historical record of the original design. Three things in it don't hold up:
+> - it grants nothing on the `finance_tracker` schema, and a custom schema inherits no default privileges, so every request would have failed `42501` before RLS was ever reached;
+> - `generated always as identity` rejects the explicit `id` values the §7 backfill inserts (`428C9`);
+> - the `auth.uid() = user_id` policies assume the app queries Supabase with the caller's own session. It doesn't. Every read and write now goes through the secret-key client (`src/lib/supabase/service.ts`) from server-side code only — auth.md **Pattern A** — and `service_role` bypasses RLS unconditionally, so those policies would never be evaluated by anything the app does. They'd be dead code, and they'd require a `user_id` column on every row for an app with exactly one real user.
+>
+> The replacement keeps the same table shape minus `user_id`, grants privileges to `service_role` alone (so the public anon key gets `42501` even though the schema is exposed to PostgREST), and keeps `enable row level security` with **zero policies** as the backstop.
+
 Dedicated schema `finance_tracker` (see §3 rationale). Mirrors the existing SQLite schema, with Postgres-appropriate types and RLS.
 
 ```sql
@@ -250,6 +257,8 @@ The 12 `CATEGORY_OPTIONS` need more than 8 slots: categories 9–12 extend the p
 - No automated SQLite↔Supabase sync job/cron — §0 confirmed this isn't wanted.
 
 ## 13. Environment variables (`.env.example`)
+
+> **Superseded — `.env.example` is the current list.** Since this was written, `SUPABASE_SERVICE_ROLE_KEY` was renamed `SUPABASE_SECRET_KEY` and became a runtime requirement rather than a script-only input (Pattern A — see the §6 note), and `OWNER_USER_IDS` / `NEXT_PUBLIC_SITE_URL` were added.
 
 ```
 # Supabase (required in all environments)

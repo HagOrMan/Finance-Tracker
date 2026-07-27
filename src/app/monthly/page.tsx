@@ -145,8 +145,12 @@ export default function MonthlyPage() {
     const values: Record<string, Record<string, number>> = {};
     for (const r of trendReceipts) {
       const m = monthOf(r.date);
-      values[r.category] ??= {};
-      values[r.category][m] = (values[r.category][m] ?? 0) + r[pcol];
+      // Bind the row rather than re-indexing: `values[r.category] ??= {}`
+      // assigns, but doesn't narrow the index expression, so a later
+      // `values[r.category][m]` is still `possibly undefined` under
+      // `noUncheckedIndexedAccess`.
+      const row = (values[r.category] ??= {});
+      row[m] = (row[m] ?? 0) + r[pcol];
     }
     return values;
   }, [trendReceipts, pcol]);
