@@ -55,6 +55,8 @@ import {
   type NewReceiptFormValues,
 } from "@/lib/data/schemas";
 import { todayISO } from "@/lib/filters";
+import { nameGroupKey } from "@/lib/name-groups";
+import { buildStoreGroups } from "@/lib/stores";
 
 export function QuickAddButton() {
   const [open, setOpen] = useState(false);
@@ -163,10 +165,24 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
 
   // Store stays free text, but every store already used is offered as a
   // suggestion so the same shop doesn't end up spelled two ways.
-  const storeSuggestions = useMemo(
-    () => [...new Set((receipts ?? []).map((r) => r.store))].sort(),
+  //
+  // Suggestions are the *group display names* rather than every raw spelling:
+  // picking one hands back the canonical spelling, so accepting a suggestion
+  // can only reduce drift, never add a variant back. Same grouping the Stores
+  // page uses, so the two never disagree about what one store is.
+  const storeGroups = useMemo(
+    () => buildStoreGroups(receipts ?? []),
     [receipts],
   );
+  const storeSuggestions = useMemo(
+    () => storeGroups.map((g) => g.displayName).sort(),
+    [storeGroups],
+  );
+
+  // Tracked by hand rather than read off `formState.touchedFields`: the
+  // category is written with `setValue`, which doesn't mark a field touched.
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [autofilled, setAutofilled] = useState<string | null>(null);
 
   const {
     register,
@@ -191,6 +207,42 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
   const store = watch("store");
   const category = watch("category");
 
+  // The group the currently-typed store belongs to, if it's one we've seen.
+  const knownStore = useMemo(
+    () => storeGroups.find((g) => g.key === nameGroupKey(store ?? "")),
+    [storeGroups, store],
+  );
+
+  /**
+   * Category autofill (FEATURES.md §4.6). The Stores page finds mis-filed
+   * receipts; this is what stops them being created.
+   *
+   * Derived from history — deliberately **no store→category defaults table**.
+   * A second place that knows what category a store belongs to is exactly what
+   * §0 forbids; the receipts already say it.
+   *
+   * Only fills when the category is still empty and untouched, so it can never
+   * overwrite a deliberate choice — including one carried over from the
+   * previous entry in a bulk-add session.
+   */
+  function handleStorePick(value: string) {
+    setValue("store", value, { shouldValidate: true });
+
+    const group = storeGroups.find((g) => g.key === nameGroupKey(value));
+    if (!group?.dominantCategory) return;
+    if (categoryTouched || category) return;
+
+    setValue("category", group.dominantCategory, { shouldValidate: true });
+    setAutofilled(group.dominantCategory);
+  }
+
+  const categoryHint =
+    autofilled && category === autofilled
+      ? `Filled from history — ${knownStore?.displayName ?? "this store"} is usually ${autofilled}.`
+      : knownStore?.dominantCategory && knownStore.dominantCategory !== category
+        ? `${knownStore.displayName} is usually ${knownStore.dominantCategory}.`
+        : null;
+
   async function onSubmit(values: NewReceiptFormValues) {
     try {
       await addReceipt.mutateAsync(values);
@@ -209,6 +261,8 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
         note: "",
         date: values.date,
       });
+      setCategoryTouched(false);
+      setAutofilled(null);
       onDone();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add receipt");
@@ -223,7 +277,7 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
           id="r-store"
           query={store}
           suggestions={storeSuggestions}
-          onPick={(value) => setValue("store", value, { shouldValidate: true })}
+          onPick={handleStorePick}
           {...register("store")}
         />
         {errors.store && <p className="text-xs text-destructive">{errors.store.message}</p>}
@@ -234,10 +288,17 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
         <CategorySelect
           id="r-category"
           value={category}
-          onChange={(v) => setValue("category", v, { shouldValidate: true })}
+          onChange={(v) => {
+            setCategoryTouched(true);
+            setAutofilled(null);
+            setValue("category", v, { shouldValidate: true });
+          }}
         />
         {errors.category && (
           <p className="text-xs text-destructive">{errors.category.message}</p>
+        )}
+        {!errors.category && categoryHint && (
+          <p className="text-xs text-muted-foreground">{categoryHint}</p>
         )}
       </div>
 
