@@ -7,9 +7,10 @@ Design document for one feature with two triggers. Read `CLAUDE.md` first, then
 `FEATURES.md` is the record of _stores, editing and subscriptions_. This file is
 the record of _how spending is summarised and mailed_.
 
-**Status:** approved (all open questions answered), not yet implemented. Update
-`PROGRESS.md` as it lands; do not update this file to reflect progress — amend it
-only when a decision here turns out to be wrong, and say so inline.
+**Status: built and deployed (2026-07-28).** Every section here is implemented as
+written, with one deviation noted inline in §4.1. Do not update this file to
+reflect progress — amend it only when a decision here turns out to be wrong, and
+say so inline. `PROGRESS.md` carries the running state.
 
 ---
 
@@ -495,6 +496,23 @@ can't coexist, and the `index.ts` re-export is what keeps
 `import { sendSubscriptionRunEmail } from "@/lib/email"` working in both route
 handlers with zero edits.
 
+> **Amendment (2026-07-28), two corrections to this section as built.**
+>
+> 1. **"Verbatim" turned out to be the wrong instruction.** The subscription
+>    content and wording did move unchanged, but it now renders *inside*
+>    `emailShell` rather than shipping as a bare fragment, which is what this
+>    section says `layout.ts` exists for in the first place — "so the two
+>    templates can't drift apart on the parts that are pure boilerplate". A
+>    fragment has no chrome to share. The side effect is that the subscription
+>    email picked up the same mobile and dark-mode safety the report has, which
+>    it did not have before.
+> 2. **A file and a directory of the same name *can* coexist** — the reasoning
+>    above is wrong even though the outcome was right. Both TypeScript and
+>    webpack try `email.ts` before `email/index.ts`, so the file would have won
+>    and resolution would have stayed deterministic. `src/lib/email.ts` is
+>    nonetheless gone, which is the cleaner end state: `@/lib/email` now
+>    resolves to the directory, and there is one barrel rather than two.
+
 `layout.ts` owns the chrome (§3.2's shell, the preheader, the footer) so the two
 templates can't drift apart on the parts that are pure boilerplate. `send.ts`
 owns the "resolve config → send → swallow and log" wrapper both use.
@@ -808,10 +826,10 @@ Claude can't run builds, so all of this is yours.
 - [ ] Compare the `/reports` preview against the email side by side.
 - [ ] A week with zero spending — temporarily request a period far in the past
       via the API, or just wait for a quiet week. Should render, not error.
-- [ ] **Post-deploy only:** wait for a Saturday firing and read `weeklyReport` in
-      the Vercel function logs. On a non-Saturday, confirm it logs
-      `{ sent: false, reason: "not-saturday" }` — that's how you know the check
-      runs at all.
+- [ ] **The last one open.** The app is deployed, so the cron is live; read one
+      firing's `weeklyReport` in the Vercel function logs. On a non-Saturday it
+      logs `{ sent: false, subject: null, reason: "not-saturday" }` — that's how
+      you know the check runs at all. Then confirm the first Saturday send.
 
 ---
 

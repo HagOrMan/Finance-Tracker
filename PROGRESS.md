@@ -263,39 +263,28 @@ use on a phone.
 
 ## Needs your attention (spending reports)
 
-Built this session, **none of it compiled or run** — see the checklist below. No
-migration, no schema change, nothing to run in Supabase.
+**Built, reviewed and shipped.** No migration, no schema change, nothing to run
+in Supabase.
 
-1. **Delete `src/lib/email.ts`.** It is now a two-line shim that forwards to
-   `src/lib/email/index.ts`; the session that split the module wasn't permitted
-   to delete files. It isn't inert — a file beats a directory in both
-   TypeScript's and webpack's resolution order, so `@/lib/email` resolves *to
-   the shim* and is forwarded on. Deleting it makes `@/lib/email` resolve to the
-   directory and changes nothing else.
-2. **`pnpm typecheck` and `pnpm lint`.** Riskiest spots, in order: the
-   `as const` literal types on `REPORT_PERIODS` flowing through
-   `REPORT_PERIODS[period].label`; the non-null assertion in
-   `reportSubject`; and `placeholderData: (previous) => previous` on
-   `useSpendingReport`, which is the first use of that option in the app.
-3. **`GET /api/reports?period=week` in the browser**, signed in. Read the JSON
-   and check the five window dates against a calendar before looking at any UI.
-   Then `month`, then `year`. **The year one is the interesting case**: with
-   under two years of data, `comparison.baselines[0].spent` should be `null`
-   and the page should say "nothing to compare against yet" rather than
-   reporting a vast increase against a partial year.
-4. **`?period=nonsense` → 400**, not a 500 and not a report full of `undefined`.
-5. **Sign out and hit both report routes** → 401/403.
-6. **Send one to yourself and open it in Gmail** — iOS/Android app *and* desktop
-   web, light *and* dark. Two specific things to look for: white-on-white text
-   (the dark-mode inversion failure `REPORTS.md` §3.2 rule 6 guards against),
-   and a "[Message clipped]" link at the bottom (rule 7).
-7. **Confirm a category's colour in the email matches the same category on
-   `/monthly`.** If it doesn't, it's the `buildCategoryColorMap` trap — see the
-   Done entry below.
-8. **Post-deploy only:** on a non-Saturday, the cron's run JSON should carry
-   `weeklyReport: { sent: false, reason: "not-saturday" }`. That line is how you
-   confirm the check runs at all; without it a broken Saturday is invisible
-   until you notice an email that never came.
+~~Delete the `src/lib/email.ts` shim.~~ **Done** — `@/lib/email` now resolves to
+the directory, one barrel instead of two.
+
+~~Typecheck, lint, the three periods, the 400 on a bad period, the 401/403 when
+signed out, the Gmail render on mobile and desktop in both themes, and the
+category-colour match against `/monthly`.~~ **All checked, all fine.**
+
+**One item still open:** the app is deployed, so the cron is live — but read one
+firing's run JSON in the Vercel function logs. On a non-Saturday it should carry
+`weeklyReport: { sent: false, subject: null, reason: "not-saturday" }`. That
+line is how you confirm the check runs at all; without it a broken Saturday is
+invisible until you notice an email that never came. Then confirm the first real
+Saturday send.
+
+**Known cosmetic quirk, not a bug:** Gmail's message-list column shows the bare
+`finances@kylehagerman.dev` rather than "Finance Tracker", even though the
+opened message shows the name correctly once the address is in Contacts. The
+`From` header is right and the app has no say in it — Gmail resolves the list
+column against its own index of the sender. Nothing to fix here.
 
 ## Needs your attention (Phase 0)
 
@@ -318,8 +307,8 @@ migration, no schema change, nothing to run in Supabase.
    **Until the migration runs, every receipt read 400s**: `RECEIPT_COLUMNS` now selects `subscription_id`, and PostgREST rejects a select naming a column that doesn't exist. This is the same trap as 002 — the app breaks on *reads*, not just on subscriptions.
 2. **Verify the core loop the way §6.11 specifies:** create a monthly subscription dated 3 months ago → the create form should warn it will write 3 receipts → "Run due charges" writes exactly 3 → run it again → writes 0. That second run is the important one; it exercises the 23505 replay rule.
 3. **Set the new env vars locally** (`.env.local`) before testing email: `RESEND_API_KEY`, `SUBSCRIPTION_EMAIL_TO=kyleaphagerman@gmail.com`, `SUBSCRIPTION_EMAIL_FROM=Finance Tracker <finances@kylehagerman.dev>`. Leaving them unset is fine — the run just skips the notification and logs a warning.
-4. **The scheduled path cannot be tested until you deploy** (Vercel crons only fire on production deployments). `POST /api/subscriptions/run-due` exercises everything except the trigger. Post-deploy: set `CRON_SECRET` in Vercel, confirm the endpoint 401s without the bearer and 503s if the var is missing, then wait for one firing and read the run JSON in the function logs.
-5. **`vercel.json` must be committed before the first deploy** or the cron simply won't exist.
+4. ~~**The scheduled path cannot be tested until you deploy.**~~ **Deployed.** What remains is the one observation nobody can make on demand: wait for a firing and read the run JSON in the Vercel function logs. See the backlog section's note on what that JSON should say.
+5. ~~**`vercel.json` must be committed before the first deploy** or the cron simply won't exist.~~ **Done** — it's committed, and it still holds the single Hobby slot at `0 12 * * *`. That one entry now drives both subscription charges and the Saturday report; there is no second cron to add, and anything else that ever needs scheduling folds into the same handler.
 
 ## Needs your attention (Phase 2)
 
@@ -343,7 +332,14 @@ migration, no schema change, nothing to run in Supabase.
 
 These need your Supabase / GCP / Vercel account access, which Claude doesn't have. Steps 1–3 are the ones the auth guide calls out as easy to get wrong.
 
-**State as of the `FEATURES.md` design session:** steps 3–7 are done — the schema is live and the SQLite backfill has run, so all development happens against real data. **Step 9 (deploy) has not happened**, by choice: the plan is to deploy once `FEATURES.md` Phases 0–3 are built. That deferral has one hard consequence — Vercel crons only fire on production deployments, so Phase 3's *scheduled* path can't be verified until after step 9. See `FEATURES.md` §7.5 for how to split verification around that. Step 9 also grows by five env vars (§7.2), and `vercel.json` must be committed before the first deploy or the cron won't exist at all.
+**State as of 2026-07-28: this list is complete — the app is deployed.** Steps 3–7 were done during the `FEATURES.md` design work (schema live, SQLite backfill run), and step 9 has now happened with the env vars set in Vercel. Every superseded note about "the app is not on Vercel yet" below and in `FEATURES.md` §7.5 / `REPORTS.md` §10 should be read as historical.
+
+**What deploying unblocked, and what it did not.** Vercel crons only fire on production deployments, so until now *nothing* about the scheduled path had ever run on a trigger — for either subscriptions or the weekly report. That path is now live but **still unobserved**: the confirming evidence is a cron firing in the Vercel function logs, and it arrives on the schedule's own timetable rather than on demand. The two things to look at once, and then never again:
+
+- **Any day:** one firing's run JSON. It should carry the subscription result plus `weeklyReport: { sent: false, subject: null, reason: "not-saturday" }` on six days out of seven. That `reason` line exists specifically so a silent Saturday is diagnosable — without it you can't tell a working cron from a dead one.
+- **The first Saturday:** `weeklyReport.sent: true` and the email in your inbox.
+
+If either is missing, the cause is almost always `CRON_SECRET`: unset makes the endpoint 503 (fail closed, off rather than open), and a mismatch makes it 401. Both are visible in the same logs.
 
 1. **Supabase → Authentication → URL Configuration → Redirect URLs.** Add every origin this app finishes sign-in on:
    `https://<this-app>.kylehagerman.dev/auth/callback`, `https://<this-app>.vercel.app/auth/callback`, `https://*-<vercel-scope>.vercel.app/auth/callback`, `http://localhost:3000/auth/callback`.
@@ -354,8 +350,8 @@ These need your Supabase / GCP / Vercel account access, which Claude doesn't hav
 5. `pnpm install`, `pnpm dev`, visit `/login`, sign in with Google. Because the allowlist is empty you'll land back on `/login` with your user id printed — that's the bootstrap path working, not a bug.
 6. Put that UUID in `OWNER_USER_IDS` and restart. You should now reach `/`.
 7. ~~Add `SQLITE_DB_PATH` to `.env.local`, then run `pnpm migrate:sqlite-to-supabase` (no env prefix, no user id needed) and run the two `setval(...)` statements it prints in the Supabase SQL editor.~~ **Done.**
-8. Click through all 6 pages + quick-add — none of this has been runtime-tested (Claude can't run `pnpm dev`/`build` under this session's constraints). Report back anything broken.
-9. Deploy to Vercel and mirror **every** env var into Production, Preview *and* Development — `.env.local` is local only, and auth working locally but 401ing on Vercel is almost always this. `DATA_SOURCE`/`SQLITE_DB_PATH` stay unset in production.
+8. ~~Click through all 6 pages + quick-add.~~ **Done.**
+9. ~~Deploy to Vercel and mirror **every** env var into Production, Preview *and* Development — `.env.local` is local only, and auth working locally but 401ing on Vercel is almost always this. `DATA_SOURCE`/`SQLITE_DB_PATH` stay unset in production.~~ **Done.** Note the env list has grown since this step was written: `APP_TIMEZONE`, `CRON_SECRET`, `RESEND_API_KEY`, `SUBSCRIPTION_EMAIL_TO`, `SUBSCRIPTION_EMAIL_FROM` (`FEATURES.md` §7.2) and the optional `REPORT_EMAIL_TO` (`REPORTS.md` §7). Any future one has to be mirrored the same way.
 10. Verify in a private window that a protected route 302s to `/login`, and that sign-out clears the session.
 
 ## Follow-ups

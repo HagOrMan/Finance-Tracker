@@ -1009,6 +1009,14 @@ All      src/components/nav.tsx, .env.example, PROGRESS.md
 
 ### 7.5 Deployment state, and what that means for verification
 
+> **Amendment (2026-07-28).** This section describes the pre-deploy world and is
+> now historical. **The app is deployed**, Phases 0–3 are built, and the env
+> vars are set in Vercel. The split below is still the right way to think about
+> verifying a cron-driven feature — it is just that the app is now on the far
+> side of the split. The one thing deployment does *not* hand you is the
+> observation itself: a firing has to happen on the schedule's timetable before
+> the logs say anything. `PROGRESS.md`'s backlog section tracks that.
+
 **The app is not on Vercel yet.** The SQLite→Supabase backfill _has_ run, so the
 Supabase schema is live and populated and every phase is developable and testable
 against real data locally. The plan is to deploy once all three phases are done.
