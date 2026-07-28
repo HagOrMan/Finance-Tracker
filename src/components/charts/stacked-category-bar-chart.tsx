@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import { ChartTooltip } from "@/components/charts/chart-tooltip";
+import { LEGEND_STYLE } from "@/components/charts/legend-style";
 
 export function StackedCategoryBarChart({
   data,
@@ -41,7 +42,7 @@ export function StackedCategoryBarChart({
           width={56}
         />
         <Tooltip cursor={{ fill: "var(--color-accent)" }} content={<ChartTooltip />} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend wrapperStyle={LEGEND_STYLE} />
         {categories.map((cat) => (
           <Bar
             key={cat}

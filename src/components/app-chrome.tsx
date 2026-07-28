@@ -16,7 +16,9 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Nav />
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      {/* The extra bottom padding on mobile is the quick-add button's footprint
+          — without it the last table row or chart sits underneath it. */}
+      <main className="mx-auto max-w-7xl px-4 py-6 max-sm:pb-28">{children}</main>
       <QuickAddButton />
     </>
   );

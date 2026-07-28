@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
+import { LEGEND_STYLE } from "@/components/charts/legend-style";
 import { formatCurrency } from "@/lib/format";
 
 export interface PieDatum {
@@ -57,7 +58,7 @@ export function CategoryPieChart({
             );
           }}
         />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend wrapperStyle={LEGEND_STYLE} />
       </PieChart>
     </ResponsiveContainer>
   );

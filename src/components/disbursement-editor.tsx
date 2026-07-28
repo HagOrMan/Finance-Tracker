@@ -227,7 +227,7 @@ function DisbursementEditorForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-2 flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="de-entity">Entity</Label>
         <AutocompleteInput
           id="de-entity"
@@ -241,8 +241,8 @@ function DisbursementEditorForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="de-amount">Amount ($)</Label>
           <Input
             id="de-amount"
@@ -255,7 +255,7 @@ function DisbursementEditorForm({
             <p className="text-xs text-destructive">{errors.amount.message}</p>
           )}
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="de-date">Date received</Label>
           <Input id="de-date" type="date" {...register("date_received")} />
           {errors.date_received && (
@@ -266,12 +266,12 @@ function DisbursementEditorForm({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="de-reason">Reason (optional)</Label>
         <Input id="de-reason" {...register("reason")} />
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label>Refund of receipt (optional)</Label>
         <Popover open={comboOpen} onOpenChange={setComboOpen}>
           <PopoverTrigger asChild>
@@ -286,7 +286,7 @@ function DisbursementEditorForm({
               }
               className="w-full justify-between font-normal"
             >
-              <span className="truncate">
+              <span className="min-w-0 truncate">
                 {linkedReceipt
                   ? `${linkedReceipt.date} · ${linkedReceipt.store} · $${linkedReceipt.price.toFixed(2)}`
                   : "Not linked to a receipt"}
@@ -338,7 +338,7 @@ function DisbursementEditorForm({
                         )}
                       />
                       <span
-                        className="truncate"
+                        className="min-w-0 truncate"
                         title={`${r.date} · ${r.store} · $${r.price.toFixed(2)}`}
                       >
                         {r.date} · {r.store} · ${r.price.toFixed(2)}

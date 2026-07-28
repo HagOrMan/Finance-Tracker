@@ -193,7 +193,10 @@ function StoresTab({ receipts }: { receipts: MergedReceipt[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-3 gap-3">
+      {/* Three across is ~110px per tile on a phone, which wraps "Possible
+          duplicates" onto three lines. Two up top and one wide below reads as
+          a deliberate layout instead. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <FilterCard
           label="Stores"
           value={groups.length}
@@ -220,6 +223,7 @@ function StoresTab({ receipts }: { receipts: MergedReceipt[] }) {
             setFilter(filter === "duplicates" ? "all" : "duplicates")
           }
           hint="Name pairs that look like the same store"
+          className="max-sm:col-span-2"
         />
       </div>
 
@@ -580,6 +584,7 @@ function FilterCard({
   active,
   tone,
   onClick,
+  className,
 }: {
   label: string;
   value: number;
@@ -587,6 +592,7 @@ function FilterCard({
   active: boolean;
   tone?: "warn";
   onClick: () => void;
+  className?: string;
 }) {
   return (
     <button
@@ -595,10 +601,11 @@ function FilterCard({
       title={hint}
       aria-pressed={active}
       className={cn(
-        "flex cursor-pointer flex-col items-start rounded-lg border p-3 text-left transition-colors",
+        "flex min-w-0 cursor-pointer flex-col items-start rounded-lg border p-3 text-left transition-colors",
         active
           ? "border-primary bg-primary/5"
           : "border-border bg-card hover:bg-accent",
+        className,
       )}
     >
       <span className="text-xs text-muted-foreground">{label}</span>
@@ -644,9 +651,9 @@ function DuplicateCallout<T extends { key: string }>({
             key={`${c.a.key}|${c.b.key}`}
             className="flex flex-wrap items-center gap-2 text-sm"
           >
-            <span className="truncate">{describe(c.a)}</span>
+            <span className="min-w-0 truncate">{describe(c.a)}</span>
             <span className="text-muted-foreground">vs</span>
-            <span className="truncate">{describe(c.b)}</span>
+            <span className="min-w-0 truncate">{describe(c.b)}</span>
             <Button
               type="button"
               size="sm"

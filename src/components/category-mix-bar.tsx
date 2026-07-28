@@ -71,7 +71,7 @@ export function CategoryMixBar({
                     colorMap[s.category] ?? "var(--color-muted-foreground)",
                 }}
               />
-              <span className="truncate" title={describe(s)}>
+              <span className="min-w-0 truncate" title={describe(s)}>
                 {s.category}
               </span>
               <span className="tabular-nums text-foreground">{s.count}</span>

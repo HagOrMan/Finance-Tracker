@@ -205,7 +205,7 @@ function ReceiptEditorForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-2 flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="e-store">Store</Label>
         <AutocompleteInput
           id="e-store"
@@ -219,7 +219,7 @@ function ReceiptEditorForm({
         )}
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="e-category">Category</Label>
         <CategorySelect
           id="e-category"
@@ -231,8 +231,8 @@ function ReceiptEditorForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="e-price">Price ($)</Label>
           <Input
             id="e-price"
@@ -245,7 +245,7 @@ function ReceiptEditorForm({
             <p className="text-xs text-destructive">{errors.price.message}</p>
           )}
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="e-date">Date</Label>
           <Input id="e-date" type="date" {...register("date")} />
           {errors.date && (
@@ -254,8 +254,8 @@ function ReceiptEditorForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="e-discount">Discount ($)</Label>
           <Input
             id="e-discount"
@@ -265,7 +265,7 @@ function ReceiptEditorForm({
             {...register("discount")}
           />
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="e-discount-pct">Discount (%)</Label>
           <Input
             id="e-discount-pct"
@@ -277,7 +277,7 @@ function ReceiptEditorForm({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="e-note">Note (optional)</Label>
         <Input id="e-note" {...register("note")} />
       </div>

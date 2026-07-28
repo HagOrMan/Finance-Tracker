@@ -197,14 +197,14 @@ export function DisbursementsTable({
           options={entityOptions}
           selected={entities}
           onChange={setEntities}
-          className="w-50"
+          className="w-50 max-sm:w-full"
         />
         <div className="flex flex-col gap-1">
           <Label className="text-xs font-medium text-muted-foreground">
             Type
           </Label>
           <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
-            <SelectTrigger className="w-35">
+            <SelectTrigger className="w-35 max-sm:w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -214,7 +214,7 @@ export function DisbursementsTable({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex min-w-50 flex-1 flex-col gap-1">
+        <div className="flex min-w-50 flex-1 flex-col gap-1 max-sm:min-w-0 max-sm:basis-full">
           <Label className="text-xs font-medium text-muted-foreground">
             Search reason
           </Label>

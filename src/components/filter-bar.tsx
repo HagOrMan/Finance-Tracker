@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FilterShell } from "@/components/filter-shell";
 import { MultiSelect } from "@/components/multi-select";
 import { useFiltersStore } from "@/store/filters-store";
 import {
@@ -44,8 +45,16 @@ export function FilterBar() {
     ...new Set((receipts ?? []).map((r) => r.store)),
   ].sort();
 
+  // Only what's actually narrowing the view — the date range is always set and
+  // "Net paid" is a display toggle, so counting either would leave the
+  // collapsed bar permanently showing a badge that means nothing.
+  const activeCount =
+    (categories.length > 0 ? 1 : 0) +
+    (stores.length > 0 ? 1 : 0) +
+    (hasDiscount !== "Any" ? 1 : 0);
+
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-3">
+    <FilterShell activeCount={activeCount}>
       <div className="flex flex-col gap-1">
         <Label
           className="text-xs font-medium text-muted-foreground"
@@ -59,14 +68,14 @@ export function FilterBar() {
             type="date"
             value={startDate}
             onChange={(e) => setDateRange(e.target.value, endDate)}
-            className="w-37.5"
+            className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
           />
           <span className="text-muted-foreground">-</span>
           <Input
             type="date"
             value={endDate}
             onChange={(e) => setDateRange(startDate, e.target.value)}
-            className="w-37.5"
+            className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
           />
         </div>
       </div>
@@ -76,7 +85,7 @@ export function FilterBar() {
         options={categoryOptions}
         selected={categories}
         onChange={setCategories}
-        className="w-50"
+        className="w-50 max-sm:w-full"
       />
 
       <MultiSelect
@@ -84,7 +93,7 @@ export function FilterBar() {
         options={storeOptions}
         selected={stores}
         onChange={setStores}
-        className="w-50"
+        className="w-50 max-sm:w-full"
       />
 
       <div className="flex flex-col gap-1">
@@ -95,7 +104,7 @@ export function FilterBar() {
           value={hasDiscount}
           onValueChange={(v) => setHasDiscount(v as Filters["hasDiscount"])}
         >
-          <SelectTrigger className="w-27.5">
+          <SelectTrigger className="w-27.5 max-sm:w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -106,24 +115,28 @@ export function FilterBar() {
         </Select>
       </div>
 
-      <div className="flex items-center gap-2 pb-2">
-        <Checkbox
-          id="net-paid"
-          checked={subtractRefunds}
-          onCheckedChange={(v) => setSubtractRefunds(v === true)}
-        />
-        <Label htmlFor="net-paid">Net paid</Label>
+      {/* Toggle and refresh share a row. In the stacked mobile column that
+          reads as a footer to the filters; on desktop it's just the last two
+          items of the wrap, where they sat anyway. */}
+      <div className="flex items-center gap-2 pb-2 max-sm:justify-between max-sm:pb-0">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="net-paid"
+            checked={subtractRefunds}
+            onCheckedChange={(v) => setSubtractRefunds(v === true)}
+          />
+          <Label htmlFor="net-paid">Net paid</Label>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={refresh}
+          aria-label="Refresh data"
+        >
+          <RefreshCw className="size-4" />
+        </Button>
       </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        onClick={refresh}
-        aria-label="Refresh data"
-      >
-        <RefreshCw className="size-4" />
-      </Button>
-    </div>
+    </FilterShell>
   );
 }

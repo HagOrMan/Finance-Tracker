@@ -354,7 +354,13 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3" title={hint}>
+    // `min-w-0`: a grid track's automatic minimum is its content's min-content
+    // width, so without it a long unbreakable currency string widens the
+    // column and pushes the whole page sideways.
+    <div
+      className="min-w-0 rounded-lg border border-border bg-card p-3"
+      title={hint}
+    >
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-xl font-semibold tabular-nums text-foreground">
         {value}

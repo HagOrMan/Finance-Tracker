@@ -466,7 +466,7 @@ function Stat({
   tone?: "warn";
 }) {
   return (
-    <div className="rounded-md border border-border bg-card p-2">
+    <div className="min-w-0 rounded-md border border-border bg-card p-2">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div
         className={cn(

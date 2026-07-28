@@ -6,6 +6,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FilterShell } from "@/components/filter-shell";
 import { MultiSelect } from "@/components/multi-select";
 import { StatCard } from "@/components/charts/stat-card";
 import { SingleSeriesBarChart } from "@/components/charts/single-series-bar-chart";
@@ -185,7 +186,7 @@ export default function DisbursementsPage() {
         📥 Disbursements
       </h1>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-3">
+      <FilterShell activeCount={entities.length > 0 ? 1 : 0}>
         <div className="flex flex-col gap-1">
           <Label
             className="text-xs font-medium text-muted-foreground"
@@ -199,14 +200,14 @@ export default function DisbursementsPage() {
               type="date"
               value={startDate}
               onChange={(e) => setDateRange(e.target.value, endDate)}
-              className="w-37.5"
+              className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
             />
             <span className="text-muted-foreground">-</span>
             <Input
               type="date"
               value={endDate}
               onChange={(e) => setDateRange(startDate, e.target.value)}
-              className="w-37.5"
+              className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
             />
           </div>
         </div>
@@ -215,7 +216,7 @@ export default function DisbursementsPage() {
           options={entityOptions}
           selected={entities}
           onChange={setEntities}
-          className="w-55"
+          className="w-55 max-sm:w-full"
         />
         <Button
           type="button"
@@ -223,10 +224,11 @@ export default function DisbursementsPage() {
           size="icon"
           onClick={refresh}
           aria-label="Refresh data"
+          className="max-sm:self-end"
         >
           <RefreshCw className="size-4" />
         </Button>
-      </div>
+      </FilterShell>
 
       {error && (
         <p className="text-sm text-destructive">
@@ -292,7 +294,7 @@ export default function DisbursementsPage() {
                 options={entityOptions}
                 selected={tblEntities}
                 onChange={setTblEntities}
-                className="w-50"
+                className="w-50 max-sm:w-full"
               />
               <div className="flex flex-col gap-1">
                 <Label className="text-xs font-medium text-muted-foreground">
@@ -302,7 +304,7 @@ export default function DisbursementsPage() {
                   value={tblType}
                   onValueChange={(v) => setTblType(v as TypeFilter)}
                 >
-                  <SelectTrigger className="w-35">
+                  <SelectTrigger className="w-35 max-sm:w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -312,7 +314,7 @@ export default function DisbursementsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex min-w-50 flex-1 flex-col gap-1">
+              <div className="flex min-w-50 flex-1 flex-col gap-1 max-sm:min-w-0 max-sm:basis-full">
                 <Label className="text-xs font-medium text-muted-foreground">
                   Search reason
                 </Label>
@@ -328,7 +330,7 @@ export default function DisbursementsPage() {
                   options={linkedStoreOptions}
                   selected={tblStores}
                   onChange={setTblStores}
-                  className="w-50"
+                  className="w-50 max-sm:w-full"
                 />
               )}
               {linkedCategoryOptions.length > 0 && (
@@ -337,7 +339,7 @@ export default function DisbursementsPage() {
                   options={linkedCategoryOptions}
                   selected={tblCategories}
                   onChange={setTblCategories}
-                  className="w-50"
+                  className="w-50 max-sm:w-full"
                 />
               )}
             </div>

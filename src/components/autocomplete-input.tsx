@@ -154,7 +154,7 @@ export function AutocompleteInput({
                 i === highlight && "bg-accent text-accent-foreground",
               )}
             >
-              <span className="truncate">{s}</span>
+              <span className="min-w-0 truncate">{s}</span>
             </li>
           ))}
         </ul>

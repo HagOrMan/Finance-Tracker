@@ -440,7 +440,42 @@
   }
 }
 
+/*
+  ─── Date fields on iOS ───────────────────────────────────────────────────────
+
+  Mobile Safari gives `input[type="date"]` an intrinsic width from its native
+  control and then refuses to shrink below it, even under `width: 100%` — so a
+  date field in a two-column row asserts a width the column can't honour and
+  pushes the row wider than the screen. That's the sideways scroll in the
+  quick-add sheet: the page is fine, one field is too wide for it.
+
+  `appearance: none` drops the native sizing (the tap-to-open picker is
+  unaffected — that's the input type, not the appearance), and `min-width: 0`
+  clears the automatic minimum so the flex/grid track can actually size it.
+  Unlayered for the same reason as the block above.
+*/
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+}
+
 /* Safari otherwise inflates text on rotation to portrait. */
 html {
   -webkit-text-size-adjust: 100%;
+}
+
+/*
+  `viewportFit: "cover"` lets the page extend under the notch, which is what
+  makes `env(safe-area-inset-*)` meaningful — but it also means that in
+  landscape the notch would sit on top of the content. Insetting the body keeps
+  every page clear of it without each layout having to think about it. Both are
+  0 in portrait, so this costs nothing there.
+*/
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }

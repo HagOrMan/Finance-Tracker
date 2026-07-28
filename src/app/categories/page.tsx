@@ -128,14 +128,14 @@ export default function CategoriesPage() {
                 options={tblCategoryOptions}
                 selected={tblCategories}
                 onChange={setTblCategories}
-                className="w-55"
+                className="w-55 max-sm:w-full"
               />
               <MultiSelect
                 label="Filter by store (affects totals)"
                 options={tblStoreOptions}
                 selected={tblStores}
                 onChange={setTblStores}
-                className="w-65"
+                className="w-65 max-sm:w-full"
               />
             </div>
 

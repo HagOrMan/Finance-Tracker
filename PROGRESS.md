@@ -175,9 +175,71 @@ every money field; safe-area padding under the quick-add button and the drawer;
 and the autocomplete list capped at `45svh` with a `scrollIntoView` on open, since
 it is absolutely positioned and now sits inside a clipping scroll container.
 
-Not done: no bottom-nav or per-page mobile layout work — the nav row still
-horizontally scrolls on a phone, and the wide tables on `/manage` and
-`/disbursements` are untouched.
+Not done *in that pass*: no nav or per-page layout work. Both are covered by the
+audit below.
+
+### Mobile audit (2026-07-28) — hamburger nav + layout sweep at 390px
+
+Targeted at an iPhone 13 (390×844), with the brief being "nothing pushed out of
+its box, cut off, or on one line when it should have wrapped".
+
+**Nav is a drawer below `lg`** (`src/components/nav.tsx`). The inline row was
+`overflow-x-auto`, so on a phone most of the app was behind a sideways swipe
+nothing signposted. `lg`, not `sm`, because the row is genuinely ~900px wide
+once the wordmark and the right-hand icons are counted — `sm` and `md` would
+both have kept a scrolling row, just a less obvious one. Sign-out moves into the
+drawer at those widths rather than becoming a third icon in a 390px bar.
+
+**The recurring bug behind most of "pushed out of its box" was `min-width:
+auto`.** A grid track's automatic minimum is its content's min-content width,
+and for an unbreakable string like `$123,456.78` that's the whole number — so a
+`grid-cols-2` stat row doesn't overflow the *card*, it widens the *column* and
+scrolls the entire page sideways. Same rule defeats `truncate` inside a flex
+row: the nowrap span reports its full width as its minimum and pushes past its
+container instead of ellipsing. `min-w-0` is now on every stat tile
+(`StatCard`, and the local ones on `/subscriptions` and in the two detail
+modals) and on every truncating flex child (multi-select summary and options,
+autocomplete rows, category-mix legend, the receipt combobox, duplicate-callout
+names). Worth knowing on sight — it looks like an overflow bug and is a sizing
+bug.
+
+**`input[type="date"]` was the sideways scroll in the quick-add sheet.** Mobile
+Safari gives it an intrinsic width from the native control and won't shrink
+below it, `width: 100%` notwithstanding, so it asserted a width its grid column
+couldn't honour. Fixed globally in `globals.css` with `appearance: none` +
+`min-width: 0` (the tap-to-open picker is the input *type*, not the appearance,
+so it's unaffected). Belt and braces, the paired field rows in all four editors
+are now `grid-cols-1 sm:grid-cols-2` — and because the Drawer only renders below
+640px and the Dialog only at or above it, that single breakpoint means "stacked
+in the sheet, side by side in the dialog" exactly.
+
+**Filter rows collapse on mobile** — new `src/components/filter-shell.tsx`, used
+by `FilterBar` and the two variant bars on `/monthly` and `/disbursements`. Six
+controls wrapping at 390px put ~300px of filters between the page title and the
+first number, so every page opened onto filters and no data. Collapsed it's one
+44px bar with a count of what's actually narrowing the view (not the date range,
+which is always set, and not "Net paid", which is a display toggle — either
+would show a badge that means nothing). Expanded, mobile stacks in one column
+instead of re-wrapping; controls opt in with `max-sm:w-full`, since the widths
+belong to the controls.
+
+Rest of the sweep: `TabsList` moved from `h-9` to `min-h-9` — `/monthly` passes
+`h-auto flex-wrap` for its month tabs, and the fixed height added in the earlier
+pass would have clipped every row after the first; the heatmap grid got
+`min-w-max` so its overflowing columns actually live inside the scroll container
+(they were rendering outside it) and a narrower label column; Recharts legends
+share a capped, scrollable `wrapperStyle` (`charts/legend-style.ts`) because
+Recharts subtracts the measured legend height from the plot, and a
+twelve-category legend is one row on a desktop and five on a phone; the stores
+page's three filter tiles go two-up-one-wide; `main` gets bottom padding clear
+of the quick-add button; and `body` gets left/right safe-area insets, which
+`viewportFit: "cover"` made necessary in landscape.
+
+Not done: the wide tables on `/manage` and `/disbursements` still scroll
+sideways inside their own container. That's the intended behaviour for a
+many-column table and a card-per-row mobile view would be a different component,
+not a tweak — worth doing if the tables turn out to be something you actually
+use on a phone.
 
 ## In progress
 

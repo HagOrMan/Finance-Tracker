@@ -185,16 +185,16 @@ export function ReceiptsTable({
           options={categoryOptions}
           selected={category}
           onChange={setCategory}
-          className="w-50"
+          className="w-50 max-sm:w-full"
         />
         <MultiSelect
           label="Filter by store"
           options={storeOptions}
           selected={store}
           onChange={setStore}
-          className="w-50"
+          className="w-50 max-sm:w-full"
         />
-        <div className="flex min-w-50 flex-1 flex-col gap-1">
+        <div className="flex min-w-50 flex-1 flex-col gap-1 max-sm:min-w-0 max-sm:basis-full">
           <span className="text-xs font-medium text-muted-foreground">
             Search notes
           </span>

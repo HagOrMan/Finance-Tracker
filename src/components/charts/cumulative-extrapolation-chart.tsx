@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import { ChartTooltip } from "@/components/charts/chart-tooltip";
+import { LEGEND_STYLE } from "@/components/charts/legend-style";
 
 export interface CumulativeDatum {
   bucket: string;
@@ -43,7 +44,7 @@ export function CumulativeExtrapolationChart({
           width={64}
         />
         <Tooltip content={<ChartTooltip />} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend wrapperStyle={LEGEND_STYLE} />
         <Line
           type="monotone"
           dataKey="Actual"

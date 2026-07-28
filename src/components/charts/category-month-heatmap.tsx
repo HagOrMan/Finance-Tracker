@@ -18,10 +18,16 @@ export function CategoryMonthHeatmap({
 
   return (
     <div className="overflow-x-auto">
+      {/* `min-w-max` so the grid box matches the width its columns actually
+          need. Without it the box is capped at the scroll container's width
+          and the overflowing columns render outside it — on a phone that's
+          every column past the second. */}
       <div
-        className="grid gap-1"
+        className="grid min-w-max gap-1"
         style={{
-          gridTemplateColumns: `140px repeat(${months.length}, minmax(72px, 1fr))`,
+          // The label column shrinks on narrow screens: at 140px it was more
+          // than a third of an iPhone's width before a single month showed.
+          gridTemplateColumns: `minmax(88px, 140px) repeat(${months.length}, minmax(72px, 1fr))`,
         }}
       >
         <div />

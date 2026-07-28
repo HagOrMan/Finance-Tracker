@@ -253,7 +253,7 @@ function SubscriptionForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-2 flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="s-name">Name</Label>
         <Input id="s-name" placeholder="Netflix Standard" {...register("name")} />
         {errors.name && (
@@ -261,7 +261,7 @@ function SubscriptionForm({
         )}
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="s-store">Store (goes onto each receipt)</Label>
         <AutocompleteInput
           id="s-store"
@@ -275,7 +275,7 @@ function SubscriptionForm({
         )}
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="s-category">Category</Label>
         <CategorySelect
           id="s-category"
@@ -293,8 +293,8 @@ function SubscriptionForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="s-price">Price ($)</Label>
           <Input
             id="s-price"
@@ -307,7 +307,7 @@ function SubscriptionForm({
             <p className="text-xs text-destructive">{errors.price.message}</p>
           )}
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="s-start">First charge date</Label>
           <Input id="s-start" type="date" {...register("start_date")} />
           {errors.start_date && (
@@ -318,8 +318,8 @@ function SubscriptionForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="s-count">Every</Label>
           <Input
             id="s-count"
@@ -335,7 +335,7 @@ function SubscriptionForm({
             </p>
           )}
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="s-unit">Unit</Label>
           <Select
             value={intervalUnit}
@@ -364,7 +364,7 @@ function SubscriptionForm({
         the 31st lands on the last day of shorter months, and never drifts back.
       </p>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="s-note">Note (optional)</Label>
         <Input id="s-note" {...register("note")} />
       </div>

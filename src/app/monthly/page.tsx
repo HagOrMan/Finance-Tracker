@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 
+import { FilterShell } from "@/components/filter-shell";
 import { MultiSelect } from "@/components/multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -171,27 +172,33 @@ export default function MonthlyPage() {
         📆 Monthly Breakdown
       </h1>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-3">
+      <FilterShell
+        activeCount={
+          (categories.length > 0 ? 1 : 0) +
+          (stores.length > 0 ? 1 : 0) +
+          (hasDiscount !== "Any" ? 1 : 0)
+        }
+      >
         <MultiSelect
           label="Months (any, non-consecutive ok)"
           options={allMonthsDesc}
           selected={effectiveMonths}
           onChange={setSelectedMonths}
-          className="w-65"
+          className="w-65 max-sm:w-full"
         />
         <MultiSelect
           label="Category"
           options={categoryOptions}
           selected={categories}
           onChange={setCategories}
-          className="w-50"
+          className="w-50 max-sm:w-full"
         />
         <MultiSelect
           label="Store"
           options={storeOptions}
           selected={stores}
           onChange={setStores}
-          className="w-50"
+          className="w-50 max-sm:w-full"
         />
         <div className="flex flex-col gap-1">
           <Label className="text-xs font-medium text-muted-foreground">
@@ -201,7 +208,7 @@ export default function MonthlyPage() {
             value={hasDiscount}
             onValueChange={(v) => setHasDiscount(v as Filters["hasDiscount"])}
           >
-            <SelectTrigger className="w-27.5">
+            <SelectTrigger className="w-27.5 max-sm:w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -211,24 +218,26 @@ export default function MonthlyPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2 pb-2">
-          <Checkbox
-            id="monthly-net-paid"
-            checked={subtractRefunds}
-            onCheckedChange={(v) => setSubtractRefunds(v === true)}
-          />
-          <Label htmlFor="monthly-net-paid">Net paid</Label>
+        <div className="flex items-center gap-2 pb-2 max-sm:justify-between max-sm:pb-0">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="monthly-net-paid"
+              checked={subtractRefunds}
+              onCheckedChange={(v) => setSubtractRefunds(v === true)}
+            />
+            <Label htmlFor="monthly-net-paid">Net paid</Label>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={refresh}
+            aria-label="Refresh data"
+          >
+            <RefreshCw className="size-4" />
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={refresh}
-          aria-label="Refresh data"
-        >
-          <RefreshCw className="size-4" />
-        </Button>
-      </div>
+      </FilterShell>
 
       {error && (
         <p className="text-sm text-destructive">
@@ -326,7 +335,7 @@ export default function MonthlyPage() {
               options={chartCategories}
               selected={trendCategoryFilter}
               onChange={setTrendCategoryFilter}
-              className="mb-4 w-65"
+              className="mb-4 w-65 max-sm:w-full"
             />
             {trendReceipts.length === 0 ? (
               <p className="text-sm text-muted-foreground">

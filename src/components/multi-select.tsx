@@ -104,7 +104,7 @@ export function MultiSelect({
             title={selected.length ? selected.join(", ") : placeholder}
             className="w-full justify-between font-normal"
           >
-            <span className="truncate">{summary}</span>
+            <span className="min-w-0 truncate">{summary}</span>
             <ChevronsUpDown className="opacity-50" />
           </Button>
         </PopoverTrigger>
@@ -176,7 +176,7 @@ export function MultiSelect({
                           selectedSet.has(option) ? "opacity-100" : "opacity-0",
                         )}
                       />
-                      <span className="truncate" title={option}>
+                      <span className="min-w-0 truncate" title={option}>
                         {option}
                       </span>
                     </CommandItem>

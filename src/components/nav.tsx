@@ -3,10 +3,19 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Menu } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerBody,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 import {
   Popover,
   PopoverContent,
@@ -35,6 +44,15 @@ const MANAGE_LINKS = [
   { href: "/subscriptions", label: "Subscriptions" },
 ];
 
+/**
+ * The breakpoint at which the inline link row fits.
+ *
+ * Measured, not guessed: the six analysis links plus "Manage" come to roughly
+ * 640px of buttons, and with the wordmark, theme toggle and sign-out either
+ * side the row needs ~900px. `sm` and `md` are both too narrow — below `lg`
+ * the row used to scroll sideways, which on a phone meant half the app was
+ * behind a gesture nothing signposted. Below `lg` it's the drawer instead.
+ */
 export function Nav() {
   const pathname = usePathname();
   const [manageOpen, setManageOpen] = useState(false);
@@ -50,7 +68,7 @@ export function Nav() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/75">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-4 lg:gap-4">
         <Link
           href="/"
           className="flex shrink-0 items-center gap-2 font-semibold text-foreground"
@@ -58,7 +76,8 @@ export function Nav() {
           <span>{APP_ICON}</span>
           <span className="hidden sm:inline">{APP_TITLE}</span>
         </Link>
-        <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
+
+        <nav className="hidden flex-1 items-center gap-1 lg:flex">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
@@ -102,11 +121,87 @@ export function Nav() {
             </PopoverContent>
           </Popover>
         </nav>
-        <div className="flex shrink-0 items-center gap-1">
+
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <ThemeToggle />
-          <SignOutButton variant="ghost" size="icon" iconOnly />
+          {/* Sign-out moves into the drawer below `lg` — three icons crowding
+              the right of a 390px bar is how you tap the wrong one. */}
+          <span className="hidden lg:inline-flex">
+            <SignOutButton variant="ghost" size="icon" iconOnly />
+          </span>
+          <MobileNav pathname={pathname} />
         </div>
       </div>
     </header>
+  );
+}
+
+function MobileNav({ pathname }: { pathname: string }) {
+  const [open, setOpen] = useState(false);
+
+  const linkClass = (active: boolean) =>
+    cn(
+      // `py-3` rather than the inline row's `py-1.5`: these are the primary
+      // touch targets on a phone, so they get the full 44px.
+      "block rounded-md px-3 py-3 text-base font-medium transition-colors",
+      active
+        ? "bg-primary text-primary-foreground"
+        : "text-foreground hover:bg-accent hover:text-accent-foreground",
+    );
+
+  return (
+    <Drawer direction="right" open={open} onOpenChange={setOpen}>
+      <DrawerTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Open menu"
+          className="lg:hidden"
+        >
+          <Menu className="size-5" />
+        </Button>
+      </DrawerTrigger>
+      <DrawerContent className="data-[vaul-drawer-direction=right]:w-72">
+        <DrawerHeader>
+          <DrawerTitle>
+            {APP_ICON} {APP_TITLE}
+          </DrawerTitle>
+          <DrawerDescription className="sr-only">
+            Site navigation
+          </DrawerDescription>
+        </DrawerHeader>
+        <DrawerBody className="flex flex-col gap-1">
+          {NAV_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setOpen(false)}
+              className={linkClass(pathname === link.href)}
+            >
+              {link.label}
+            </Link>
+          ))}
+
+          <p className="mt-4 px-3 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Manage
+          </p>
+          {MANAGE_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setOpen(false)}
+              className={linkClass(pathname === link.href)}
+            >
+              {link.label}
+            </Link>
+          ))}
+
+          <div className="mt-6 border-t border-border pt-4">
+            <SignOutButton variant="outline" />
+          </div>
+        </DrawerBody>
+      </DrawerContent>
+    </Drawer>
   );
 }

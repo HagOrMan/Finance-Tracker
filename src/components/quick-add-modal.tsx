@@ -276,7 +276,7 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="r-store">Store</Label>
         <AutocompleteInput
           id="r-store"
@@ -288,7 +288,7 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
         {errors.store && <p className="text-xs text-destructive">{errors.store.message}</p>}
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="r-category">Category</Label>
         <CategorySelect
           id="r-category"
@@ -307,8 +307,13 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
+      {/* One column in the mobile drawer, two in the desktop dialog — and
+          since the drawer only renders below 640px and the dialog only at or
+          above it, `sm:` splits them exactly. Pairing Price with Date at
+          390px left the date field wider than its column, which is what was
+          scrolling the sheet sideways. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="r-price">Price ($)</Label>
           {/* `inputMode="decimal"` so mobile opens the numeric keypad with a
               decimal point — `type="number"` alone gives a keypad without one
@@ -322,14 +327,14 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
           />
           {errors.price && <p className="text-xs text-destructive">{errors.price.message}</p>}
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="r-date">Date</Label>
           <Input id="r-date" type="date" {...register("date")} />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="r-discount">Discount ($)</Label>
           <Input
             id="r-discount"
@@ -339,7 +344,7 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
             {...register("discount")}
           />
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="r-discount-pct">Discount (%)</Label>
           <Input
             id="r-discount-pct"
@@ -351,7 +356,7 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="r-note">Note (optional)</Label>
         <Input id="r-note" {...register("note")} />
       </div>
@@ -420,7 +425,7 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="d-entity">Entity</Label>
         <AutocompleteInput
           id="d-entity"
@@ -432,8 +437,8 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
         {errors.entity && <p className="text-xs text-destructive">{errors.entity.message}</p>}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="d-amount">Amount ($)</Label>
           <Input
             id="d-amount"
@@ -444,18 +449,18 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
           />
           {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="d-date">Date received</Label>
           <Input id="d-date" type="date" {...register("date_received")} />
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="d-reason">Reason (optional)</Label>
         <Input id="d-reason" {...register("reason")} />
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <Label>Refund of receipt (optional)</Label>
         <Popover open={comboOpen} onOpenChange={setComboOpen}>
           <PopoverTrigger asChild>
@@ -470,7 +475,7 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
               }
               className="w-full justify-between font-normal"
             >
-              <span className="truncate">
+              <span className="min-w-0 truncate">
                 {linkedReceipt
                   ? `${linkedReceipt.date} · ${linkedReceipt.store} · $${linkedReceipt.price.toFixed(2)}`
                   : "Not linked to a receipt"}
@@ -519,7 +524,7 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
                         )}
                       />
                       <span
-                        className="truncate"
+                        className="min-w-0 truncate"
                         title={`${r.date} · ${r.store} · $${r.price.toFixed(2)}`}
                       >
                         {r.date} · {r.store} · ${r.price.toFixed(2)}
