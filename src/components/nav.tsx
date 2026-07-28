@@ -29,11 +29,11 @@ const NAV_LINKS = [
   { href: "/disbursements", label: "Disbursements" },
 ];
 
-// Phase 2 adds "Receipts" (/manage) and Phase 3 "Subscriptions"
-// (/subscriptions) here. Listing them before their routes exist would just be
-// two 404s in the menu.
+// Phase 3 adds "Subscriptions" (/subscriptions) here. Listing it before the
+// route exists would just be a 404 in the menu.
 const MANAGE_LINKS = [
   { href: "/stores", label: "Stores & entities" },
+  { href: "/manage", label: "Receipts & disbursements" },
 ];
 
 export function Nav() {

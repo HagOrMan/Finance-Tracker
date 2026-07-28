@@ -13,9 +13,18 @@ import { Input } from "@/components/ui/input";
  * autofill, which makes it inconsistent about opening on the first click and
  * about staying open long enough to click an entry.
  *
- * The input itself stays uncontrolled so react-hook-form's `register` can own
- * it — `query` is the current field value, passed in only to filter the list,
- * and `onPick` is where the caller writes the chosen value back (`setValue`).
+ * Works either way round:
+ *
+ * - **Uncontrolled** (react-hook-form's `register` owns the input): pass
+ *   `query` as the current field value purely so the list can filter, and let
+ *   `onPick` write the choice back with `setValue`. This is what quick-add and
+ *   the two editors do.
+ * - **Controlled** (plain `useState`): pass `value`/`onChange` as well, and
+ *   point `onPick` at the same setter. Without `value` a pick would update the
+ *   caller's state but not the input's own DOM value, since nothing else is
+ *   driving it.
+ *
+ * `defaultValue` stays excluded — it conflicts with both modes.
  */
 export function AutocompleteInput({
   query,
@@ -26,7 +35,7 @@ export function AutocompleteInput({
   onBlur,
   onKeyDown,
   ...props
-}: Omit<ComponentProps<typeof Input>, "value" | "defaultValue"> & {
+}: Omit<ComponentProps<typeof Input>, "defaultValue"> & {
   query: string;
   suggestions: string[];
   onPick: (value: string) => void;
