@@ -24,6 +24,23 @@ export function addDaysISO(dateISO: string, days: number): string {
 }
 
 /**
+ * Day of the week for a plain ISO date. 0 = Sunday … 6 = Saturday.
+ *
+ * UTC-anchored for the same reason as everything else in this file — the local
+ * parse of "YYYY-MM-DD" shifts the day west of Greenwich, which would put the
+ * weekly report on the wrong weekday for exactly the timezones this app runs in.
+ *
+ * The only caller is the cron's Saturday check (REPORTS.md §6.3). The report
+ * builder itself never learns what day of the week it is, which is what lets
+ * the identical code path serve the on-demand button on a Tuesday.
+ */
+export function dayOfWeekUTC(dateISO: string): number {
+  return new Date(`${dateISO}T00:00:00Z`).getUTCDay();
+}
+
+export const SATURDAY = 6;
+
+/**
  * Today's date in a named IANA zone, as "YYYY-MM-DD".
  *
  * `todayISO()` in `filters.ts` uses the *server's* local zone. On Vercel that

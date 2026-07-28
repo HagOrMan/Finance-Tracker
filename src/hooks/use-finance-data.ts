@@ -14,8 +14,9 @@ import type {
   UpdateReceiptInput,
   UpdateSubscriptionInput,
 } from "@/lib/data/types";
-// From the pure module, not `subscriptions-runner` — that one is `server-only`.
+// From the pure modules, not the `*-runner` ones — those are `server-only`.
 import type { SubscriptionRunResult } from "@/lib/subscriptions";
+import type { ReportPeriod, SpendingReport } from "@/lib/reports";
 
 /**
  * A non-2xx response, with the parsed body kept intact.
@@ -315,5 +316,45 @@ export function useRunDueCharges() {
       queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
       queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Spending reports (REPORTS.md)
+//
+// The report is fetched rather than aggregated from the two caches above, even
+// though every row it needs is already in them. The reason is "today":
+// `APP_TIMEZONE` is server-only, so a browser-built report would use the
+// browser's zone and could disagree with the emailed one by a day at every
+// window boundary. See REPORTS.md §4.4.
+// ---------------------------------------------------------------------------
+
+const REPORT_KEY = (period: ReportPeriod) => ["report", period];
+
+export function useSpendingReport(period: ReportPeriod) {
+  return useQuery({
+    queryKey: REPORT_KEY(period),
+    queryFn: () => fetchJSON<SpendingReport>(`/api/reports?period=${period}`),
+    staleTime: 60_000,
+    // Keeps the previous period's report on screen while the next one loads,
+    // so switching tabs doesn't flash the whole page back to a skeleton.
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * Sends the report for a period.
+ *
+ * Deliberately invalidates nothing: sending changes no data anywhere. It posts
+ * only the period — the server rebuilds the model rather than trusting numbers
+ * that came from a browser.
+ */
+export function useSendSpendingReport() {
+  return useMutation({
+    mutationFn: (period: ReportPeriod) =>
+      postJSON<{ sent: boolean; subject: string | null; reason?: string }>(
+        "/api/reports/send",
+        { period },
+      ),
   });
 }

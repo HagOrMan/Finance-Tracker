@@ -241,19 +241,61 @@ many-column table and a card-per-row mobile view would be a different component,
 not a tweak — worth doing if the tables turn out to be something you actually
 use on a phone.
 
+- **[`REPORTS.md`](REPORTS.md) — spending reports (this session).** A Saturday email over the past week, plus on-demand week/month/year reviews at `/reports`. **No migration, no schema change, no new table or column** — a report is a lens (`FEATURES.md` §0), so it writes nothing and stores nothing.
+  - **One window rule, three sizes** (`src/lib/reports.ts`): the N days ending yesterday, N = 7/30/365. Run on a Saturday the weekly window *is* last Sat→Fri — not because Saturday is special-cased, but because that's what "the 7 days ending yesterday" means on a Saturday. **The builder never learns what day of the week it is**; only `maybeSendWeeklyReport` in the cron does. That's what lets the identical code path serve the on-demand button on a Tuesday, and what makes the weekly email testable without waiting for one.
+  - **Ending yesterday, not today** — today is still being spent, and a report that silently includes a partial day always reads low with no way for the reader to know by how much.
+  - **Baseline windows that predate the ledger are dropped, not counted as zero.** Averaging in a window that is empty because the app didn't exist yet manufactures an increase out of the app's own age. `usableBaselines` is what the label counts, so a report with two of four windows usable says "vs 2-week avg" rather than quietly dividing by four.
+  - **`changeVsBaseline` is `null`, never `Infinity` or `NaN`.** A first-ever week against four empty windows is the *normal* first run of this feature, not an exotic input, and every renderer prints "no baseline" for it — deliberately not `0%`, which reads as "unchanged", a claim nobody made.
+  - **Travel / School / Rent** (`COMPARISON_EXCLUDED_CATEGORIES` in `config.ts`) are held out of the headline, the category table and both sides of every comparison, then reported in their own strip with an all-in total. Matching goes through `nameGroupKey` — the app's existing "same name" rule — so `"Rent"`/`" rent"` match and there is no second normaliser to keep in sync. It's **policy, not data**: changing the list changes past reports on re-render, which is correct, because the email is a photograph and the ledger is the subject.
+  - **Spend is always net (`actual_price`); "Received" counts only disbursements with no `refunded_from_receipt`.** A refund has already reduced the spend figure, so counting it again as income would report the same dollar twice — once as a reduction and once as money in.
+  - **The email is hand-built inline-styled HTML in `src/lib/email/`** (`layout.ts` shell + `spending-report.ts`), because Gmail's mobile app strips `<head>` styles for accounts it doesn't host. That one fact forces the rest: tables not flexbox, no media queries (fluid single column capped at 600px instead), no external fonts or images, bars as two-cell tables, `color` and `background-color` always set together so Gmail's dark-mode inversion can't produce white-on-white, a hidden preheader, and a plain-text alternative. `src/lib/email.ts` is now a shim — **delete it**, see below.
+  - **⚠️ The trap, and it bit while building this.** `buildCategoryColorMap` assigns from the palette by *alphabetical index over the set it is handed*, and the app's pages hand it every category in the ledger. So both the email (`reports-runner.ts`) and `/reports` build the map over **all** receipts, never the report window's categories — otherwise Groceries is turquoise in the email and blue on `/monthly`, with nothing to catch it. `ReportCategoryTable` therefore takes `colorMap` as a prop rather than calling `useCategoryColors` itself, matching `CategoryMixBar`'s existing design.
+  - **The page fetches the model instead of aggregating its own caches**, which `/stores` and `/manage` do and which would have been free here. The reason is "today": `APP_TIMEZONE` is server-only, so a browser-built report would use the browser's zone and could show a different week than the one that got mailed. `GET /api/reports` makes the server the only thing that decides what today means, and makes the preview provably the same object the email renders.
+  - **`POST /api/reports/send` takes only `{ period }`** and rebuilds server-side. The shallow reason is payload size; the real one is that numbers in an email you'll act on shouldn't have come from a browser, with nothing in the email able to say they did.
+  - **It folds into the existing subscriptions cron**, exactly as `FEATURES.md` §6.6 predicted a second scheduled job would have to on Hobby's single slot. No `vercel.json` change, **no new `PUBLIC_PATHS` entry**, and no third auth gate — the app still has two gates and one exception. Charges run *before* the report, because charges write and the report reads: a backfilled charge dated inside the window has to be on the ledger before the report counts it.
+  - **Sends every Saturday, including a zero-spend week — and never catches up.** Both are deliberate inversions of the subscription email's rules. It always sends because a report that only arrives when something happened is indistinguishable from a broken cron, and nothing else in the app would tell you the weekly email stopped. It never catches up because catching up needs to remember when the last one went out, which means persisted state, which would make a lens into a generator. A missed Saturday costs one click on `/reports`.
+  - Nav: **Reports is inline, not in "Manage ▾"** — it's analysis, not data management. That takes the inline row to 7; it already scrolls, but that's the one to watch if an eighth appears. Both the desktop row and the mobile drawer map `NAV_LINKS`, so it landed in both.
+  - One new env var, optional: `REPORT_EMAIL_TO`, falling back to `SUBSCRIPTION_EMAIL_TO`. Nothing new has to be set in Vercel for this to work.
+
 ## In progress
 
 - **Nothing — Phases 0–3 of [`FEATURES.md`](FEATURES.md) are built.** What's left is your verification pass and the deploy (see the backlog below), which is the point at which the *scheduled* path can be tested at all.
 
-## Next — designed, not built
+## Needs your attention (spending reports)
 
-- **[`REPORTS.md`](REPORTS.md) — spending reports.** Approved design, no code yet. A Saturday email summarising the past week, plus on-demand week/month/year reviews from a new `/reports` page. **No migration and no schema change** — a report is a lens over receipts + disbursements (`FEATURES.md` §0), so it writes nothing and stores nothing, including "when did I last send one". Points worth knowing before starting:
-  - **One window rule**: the N days ending yesterday (7/30/365). Run on a Saturday, the weekly window *is* last Sat→Fri — the builder never learns what day of the week it is; only the cron does.
-  - **Travel / School / Rent are excluded from the headline and all comparison math**, and reported in a separate strip with an all-in total. Matching goes through `nameGroupKey`, not a second normaliser.
-  - **It folds into the existing subscriptions cron handler**, exactly as `FEATURES.md` §6.6 predicted a second scheduled job would have to on Hobby's single slot. So no new `vercel.json` entry, no new `PUBLIC_PATHS` entry, and no third auth gate.
-  - **`src/lib/email.ts` becomes `src/lib/email/`** with an `index.ts` re-export, so the two existing importers don't change. The subscription templates move verbatim.
-  - **The one non-obvious trap** (§3.3): `buildCategoryColorMap` assigns colors by alphabetical index over the set it's given, so the email must build its map over *every* category in the ledger — not just the report window's — or the same category gets different colors in the email and in the app.
-  - Build order and the full verification list are in §9 / §10 of that file.
+Built this session, **none of it compiled or run** — see the checklist below. No
+migration, no schema change, nothing to run in Supabase.
+
+1. **Delete `src/lib/email.ts`.** It is now a two-line shim that forwards to
+   `src/lib/email/index.ts`; the session that split the module wasn't permitted
+   to delete files. It isn't inert — a file beats a directory in both
+   TypeScript's and webpack's resolution order, so `@/lib/email` resolves *to
+   the shim* and is forwarded on. Deleting it makes `@/lib/email` resolve to the
+   directory and changes nothing else.
+2. **`pnpm typecheck` and `pnpm lint`.** Riskiest spots, in order: the
+   `as const` literal types on `REPORT_PERIODS` flowing through
+   `REPORT_PERIODS[period].label`; the non-null assertion in
+   `reportSubject`; and `placeholderData: (previous) => previous` on
+   `useSpendingReport`, which is the first use of that option in the app.
+3. **`GET /api/reports?period=week` in the browser**, signed in. Read the JSON
+   and check the five window dates against a calendar before looking at any UI.
+   Then `month`, then `year`. **The year one is the interesting case**: with
+   under two years of data, `comparison.baselines[0].spent` should be `null`
+   and the page should say "nothing to compare against yet" rather than
+   reporting a vast increase against a partial year.
+4. **`?period=nonsense` → 400**, not a 500 and not a report full of `undefined`.
+5. **Sign out and hit both report routes** → 401/403.
+6. **Send one to yourself and open it in Gmail** — iOS/Android app *and* desktop
+   web, light *and* dark. Two specific things to look for: white-on-white text
+   (the dark-mode inversion failure `REPORTS.md` §3.2 rule 6 guards against),
+   and a "[Message clipped]" link at the bottom (rule 7).
+7. **Confirm a category's colour in the email matches the same category on
+   `/monthly`.** If it doesn't, it's the `buildCategoryColorMap` trap — see the
+   Done entry below.
+8. **Post-deploy only:** on a non-Saturday, the cron's run JSON should carry
+   `weeklyReport: { sent: false, reason: "not-saturday" }`. That line is how you
+   confirm the check runs at all; without it a broken Saturday is invisible
+   until you notice an email that never came.
 
 ## Needs your attention (Phase 0)
 

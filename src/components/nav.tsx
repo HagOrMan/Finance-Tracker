@@ -36,6 +36,10 @@ const NAV_LINKS = [
   { href: "/categories", label: "Categories" },
   { href: "/savings", label: "Savings" },
   { href: "/disbursements", label: "Disbursements" },
+  // Analysis, not data management — so it stays inline rather than joining the
+  // Manage popover. That takes this row to 7 on desktop; it already scrolls
+  // horizontally, but this is the one to watch if an eighth ever appears.
+  { href: "/reports", label: "Reports" },
 ];
 
 const MANAGE_LINKS = [
