@@ -7,10 +7,15 @@ import type {
   MergedReceipt,
   NewDisbursementInput,
   NewReceiptInput,
+  NewSubscriptionInput,
   Receipt,
+  Subscription,
   UpdateDisbursementInput,
   UpdateReceiptInput,
+  UpdateSubscriptionInput,
 } from "@/lib/data/types";
+// From the pure module, not `subscriptions-runner` — that one is `server-only`.
+import type { SubscriptionRunResult } from "@/lib/subscriptions";
 
 /**
  * A non-2xx response, with the parsed body kept intact.
@@ -30,12 +35,22 @@ export class ApiError extends Error {
   }
 }
 
-/** The rows blocking a receipt delete, or `[]` for any other failure. */
-export function linkedDisbursements(error: unknown): Disbursement[] {
+/**
+ * The rows blocking a delete — a 409's `linked` payload — or `[]` for any
+ * other failure.
+ *
+ * Two delete guards produce this shape: a receipt blocked by the refunds
+ * pointing at it, and a subscription blocked by the receipts it generated. The
+ * caller names the row type, since only it knows which guard it just tripped.
+ */
+export function linkedRows<T>(error: unknown): T[] {
   if (!(error instanceof ApiError) || error.status !== 409) return [];
-  return Array.isArray(error.body.linked)
-    ? (error.body.linked as Disbursement[])
-    : [];
+  return Array.isArray(error.body.linked) ? (error.body.linked as T[]) : [];
+}
+
+/** The disbursements blocking a receipt delete. */
+export function linkedDisbursements(error: unknown): Disbursement[] {
+  return linkedRows<Disbursement>(error);
 }
 
 async function request<T>(
@@ -73,6 +88,7 @@ const deleteJSON = <T,>(url: string) => request<T>(url, { method: "DELETE" });
 
 const RECEIPTS_KEY = ["merged-receipts"];
 const DISBURSEMENTS_KEY = ["disbursements"];
+const SUBSCRIPTIONS_KEY = ["subscriptions"];
 
 export function useMergedReceipts() {
   return useQuery({
@@ -215,6 +231,88 @@ export function useDeleteDisbursement() {
       deleteJSON<{ ok: true; id: number }>(`/api/disbursements/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: DISBURSEMENTS_KEY });
+      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions (FEATURES.md Phase 3)
+//
+// Anything that can *generate a charge* invalidates RECEIPTS_KEY as well as
+// SUBSCRIPTIONS_KEY — a generated charge is a receipt, and every total in the
+// app reads receipts. Edits that only touch the schedule don't need to.
+// ---------------------------------------------------------------------------
+
+export function useSubscriptions() {
+  return useQuery({
+    queryKey: SUBSCRIPTIONS_KEY,
+    queryFn: () => fetchJSON<Subscription[]>("/api/subscriptions"),
+    staleTime: 60_000,
+  });
+}
+
+export function useAddSubscription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NewSubscriptionInput) =>
+      postJSON<Subscription>("/api/subscriptions", input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
+    },
+  });
+}
+
+export function useUpdateSubscription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: number;
+      patch: UpdateSubscriptionInput;
+    }) => patchJSON<Subscription>(`/api/subscriptions/${id}`, patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
+    },
+  });
+}
+
+export function useDeleteSubscription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      deleteJSON<{ ok: true; id: number }>(`/api/subscriptions/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
+    },
+  });
+}
+
+export function useChargeSubscriptionNow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      postJSON<{
+        receiptId: number | null;
+        date: string;
+        alreadyCharged: boolean;
+      }>(`/api/subscriptions/${id}/charge-now`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
+      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
+    },
+  });
+}
+
+export function useRunDueCharges() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      postJSON<SubscriptionRunResult>("/api/subscriptions/run-due", {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
       queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
     },
   });

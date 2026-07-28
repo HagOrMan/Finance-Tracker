@@ -395,7 +395,7 @@ function StoreDetailBody({
               <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Net</TableHead>
               <TableHead>Note</TableHead>
-              <TableHead className="w-9" />
+              <TableHead className="sticky right-0 w-9 border-l border-border bg-background" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -403,7 +403,7 @@ function StoreDetailBody({
               <TableRow
                 key={r.id}
                 className={cn(
-                  "cursor-pointer",
+                  "group/row cursor-pointer",
                   group.isInconsistent &&
                     r.category !== group.dominantCategory &&
                     "bg-destructive/5",
@@ -421,7 +421,7 @@ function StoreDetailBody({
                 <TableCell className="max-w-40 truncate" title={r.note ?? ""}>
                   {r.note ?? ""}
                 </TableCell>
-                <TableCell>
+                <TableCell className="sticky right-0 z-10 border-l border-border bg-background group-hover/row:bg-muted/50">
                   <Button
                     type="button"
                     variant="ghost"

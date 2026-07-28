@@ -9,7 +9,16 @@ import { requireEnv } from "@/lib/env";
 // moment it exists. /login must stay public for the not-yet-authorized case
 // below, and /auth/callback because the user has no session yet when they hit
 // it (the PKCE code verifier cookie is all they carry).
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+//
+// `/api/cron` is public *to this proxy only*. A Vercel cron invocation carries
+// no session cookie, so the deny-by-default rule below would 401 it before the
+// handler ever ran — the schedule would silently never fire. What actually
+// guards it is `requireCronSecret()` inside
+// `src/app/api/cron/subscriptions/route.ts`, which fails closed when
+// `CRON_SECRET` is unset. This entry is exactly as wide as that one handler;
+// anything else added under /api/cron inherits the exemption and must bring its
+// own gate. See FEATURES.md §6.6 and §7.3.
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/api/cron"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

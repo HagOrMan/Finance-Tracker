@@ -245,13 +245,23 @@ export function ReceiptsTable({
             )}
             <TableHead>Note</TableHead>
             {editable && <TableHead>Last edited</TableHead>}
-            {editable && <TableHead className="w-9" />}
+            {/* Pinned to the right edge of the horizontal scroll container, so
+                the edit affordance is reachable without scrolling a wide table
+                all the way over. `bg-background` is required — a transparent
+                sticky cell lets the columns underneath show through it. */}
+            {editable && (
+              <TableHead className="sticky right-0 w-9 border-l border-border bg-background" />
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
           {filtered.map((r) => (
             <TableRow
               key={r.id}
+              // Named group so the pinned cell below can mirror the row's own
+              // hover / selected background instead of punching a
+              // solid-coloured hole through it.
+              className="group/row"
               data-state={selected.has(r.id) ? "selected" : undefined}
             >
               {selectable && (
@@ -305,7 +315,7 @@ export function ReceiptsTable({
                 </TableCell>
               )}
               {editable && (
-                <TableCell>
+                <TableCell className="sticky right-0 z-10 border-l border-border bg-background group-hover/row:bg-muted/50 group-data-[state=selected]/row:bg-muted">
                   <Button
                     type="button"
                     variant="ghost"

@@ -66,6 +66,7 @@ export type Database = {
           note: string | null;
           price: number;
           store: string;
+          subscription_id: number | null;
           updated_at: string;
         };
         Insert: {
@@ -78,6 +79,7 @@ export type Database = {
           note?: string | null;
           price: number;
           store: string;
+          subscription_id?: number | null;
           updated_at?: string;
         };
         Update: {
@@ -89,6 +91,63 @@ export type Database = {
           id?: number;
           note?: string | null;
           price?: number;
+          store?: string;
+          subscription_id?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "receipts_subscription_id_fkey";
+            columns: ["subscription_id"];
+            isOneToOne: false;
+            referencedRelation: "subscriptions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      subscriptions: {
+        Row: {
+          active: boolean;
+          category: string;
+          charges_generated: number;
+          created_at: string;
+          id: number;
+          interval_count: number;
+          interval_unit: string;
+          name: string;
+          note: string | null;
+          price: number;
+          start_date: string;
+          store: string;
+          updated_at: string;
+        };
+        Insert: {
+          active?: boolean;
+          category: string;
+          charges_generated?: number;
+          created_at?: string;
+          id?: number;
+          interval_count?: number;
+          interval_unit: string;
+          name: string;
+          note?: string | null;
+          price: number;
+          start_date: string;
+          store: string;
+          updated_at?: string;
+        };
+        Update: {
+          active?: boolean;
+          category?: string;
+          charges_generated?: number;
+          created_at?: string;
+          id?: number;
+          interval_count?: number;
+          interval_unit?: string;
+          name?: string;
+          note?: string | null;
+          price?: number;
+          start_date?: string;
           store?: string;
           updated_at?: string;
         };

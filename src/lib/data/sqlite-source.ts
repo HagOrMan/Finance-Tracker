@@ -322,4 +322,43 @@ export class SqliteDataSource implements DataSource {
       db.close();
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Subscriptions — unsupported here (D8).
+  //
+  // This mode exists for offline dev against the old SQLite export, whose
+  // database has no `subscriptions` table and never will: 003 is a
+  // Postgres-only migration. Throwing is the honest answer — silently
+  // returning `[]` would make the subscriptions page look empty rather than
+  // unavailable, and a "run due charges" that quietly no-ops is worse than one
+  // that refuses.
+  // -------------------------------------------------------------------------
+
+  private unsupported(): never {
+    throw new Error(
+      "Subscriptions are not supported when DATA_SOURCE=sqlite — that mode is dev-only and its database has no subscriptions table. Use the Supabase source.",
+    );
+  }
+
+  async loadSubscriptions(): Promise<never> {
+    return this.unsupported();
+  }
+  async insertSubscription(): Promise<never> {
+    return this.unsupported();
+  }
+  async updateSubscription(): Promise<never> {
+    return this.unsupported();
+  }
+  async deleteSubscription(): Promise<never> {
+    return this.unsupported();
+  }
+  async receiptsForSubscription(): Promise<never> {
+    return this.unsupported();
+  }
+  async insertSubscriptionCharge(): Promise<never> {
+    return this.unsupported();
+  }
+  async setChargesGenerated(): Promise<never> {
+    return this.unsupported();
+  }
 }

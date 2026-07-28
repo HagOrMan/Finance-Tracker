@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { INTERVAL_UNITS } from "./types";
+
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected date format YYYY-MM-DD");
@@ -91,6 +93,44 @@ export const bulkUpdateDisbursementsSchema = z.object({
   patch: updateDisbursementSchema,
 });
 
+// ---------------------------------------------------------------------------
+// Subscriptions (Phase 3)
+//
+// Same defaults-free base as receipts, for the same reason: `interval_count`
+// and `active` carry defaults on create, and a `.partial()` of the *defaulted*
+// schema would resurrect a paused subscription on any unrelated PATCH.
+//
+// `charges_generated` is absent by construction. It's the runner's bookkeeping,
+// and nothing reachable from a form may write it — the next charge date is
+// derived from it, so a stray value would silently reschedule the whole series.
+// ---------------------------------------------------------------------------
+const subscriptionFields = {
+  name: z.string().trim().min(1, "Name is required"),
+  store: z.string().trim().min(1, "Store is required"),
+  category: z.string().trim().min(1, "Category is required"),
+  price: z.coerce.number().positive("Price must be greater than 0"),
+  interval_unit: z.enum(INTERVAL_UNITS),
+  interval_count: z.coerce
+    .number()
+    .int()
+    .min(1, "Interval must be at least 1")
+    .max(365, "Interval is unreasonably large"),
+  start_date: isoDate,
+  active: z.boolean(),
+  note: z.string().trim().nullable().optional(),
+} as const;
+
+export const newSubscriptionSchema = z.object({
+  ...subscriptionFields,
+  interval_count: subscriptionFields.interval_count.default(1),
+  active: subscriptionFields.active.default(true),
+});
+
+export const updateSubscriptionSchema = z
+  .object(subscriptionFields)
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, "No fields to update");
+
 // The form needs both ends of the schema. `z.coerce` means what react-hook-form
 // holds while you type (`Input` — a number field's DOM value is a string) is not
 // what the resolver hands to `onSubmit` (`Values` — coerced, defaults applied),
@@ -107,4 +147,13 @@ export type UpdateDisbursementFormInput = z.input<
 export type UpdateReceiptFormValues = z.output<typeof updateReceiptSchema>;
 export type UpdateDisbursementFormValues = z.output<
   typeof updateDisbursementSchema
+>;
+
+export type NewSubscriptionFormInput = z.input<typeof newSubscriptionSchema>;
+export type NewSubscriptionFormValues = z.output<typeof newSubscriptionSchema>;
+export type UpdateSubscriptionFormInput = z.input<
+  typeof updateSubscriptionSchema
+>;
+export type UpdateSubscriptionFormValues = z.output<
+  typeof updateSubscriptionSchema
 >;

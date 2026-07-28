@@ -29,11 +29,10 @@ const NAV_LINKS = [
   { href: "/disbursements", label: "Disbursements" },
 ];
 
-// Phase 3 adds "Subscriptions" (/subscriptions) here. Listing it before the
-// route exists would just be a 404 in the menu.
 const MANAGE_LINKS = [
   { href: "/stores", label: "Stores & entities" },
   { href: "/manage", label: "Receipts & disbursements" },
+  { href: "/subscriptions", label: "Subscriptions" },
 ];
 
 export function Nav() {

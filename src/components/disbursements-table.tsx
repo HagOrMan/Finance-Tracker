@@ -259,7 +259,11 @@ export function DisbursementsTable({
             <TableHead>Reason</TableHead>
             <TableHead>Refund of</TableHead>
             {editable && <TableHead>Last edited</TableHead>}
-            {editable && <TableHead className="w-9" />}
+            {/* Pinned to the right edge of the scroll container — see the same
+                treatment in receipts-table.tsx. */}
+            {editable && (
+              <TableHead className="sticky right-0 w-9 border-l border-border bg-background" />
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -271,6 +275,7 @@ export function DisbursementsTable({
             return (
               <TableRow
                 key={d.id}
+                className="group/row"
                 data-state={selected.has(d.id) ? "selected" : undefined}
               >
                 {selectable && (
@@ -305,7 +310,7 @@ export function DisbursementsTable({
                   </TableCell>
                 )}
                 {editable && (
-                  <TableCell>
+                  <TableCell className="sticky right-0 z-10 border-l border-border bg-background group-hover/row:bg-muted/50 group-data-[state=selected]/row:bg-muted">
                     <Button
                       type="button"
                       variant="ghost"

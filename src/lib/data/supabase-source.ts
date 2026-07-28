@@ -8,10 +8,17 @@ import type {
   MergedReceipt,
   NewReceiptInput,
   NewDisbursementInput,
+  NewSubscriptionInput,
+  Subscription,
   UpdateReceiptInput,
   UpdateDisbursementInput,
+  UpdateSubscriptionInput,
 } from "./types";
-import { ForeignKeyViolationError, NotFoundError } from "./errors";
+import {
+  ForeignKeyViolationError,
+  NotFoundError,
+  UniqueViolationError,
+} from "./errors";
 import { mergeReceipts } from "./merge";
 
 // Dedicated schema (not `public`) — see migration.md §3 for rationale. Must
@@ -19,14 +26,16 @@ import { mergeReceipts } from "./merge";
 const SCHEMA = "finance_tracker";
 
 // Named once so a select and its matching `.select()` on a write can't drift.
-// `subscription_id` is deliberately absent: the column doesn't exist until
-// Phase 3's migration, and selecting a missing column is a 400 from PostgREST.
+// `subscription_id` joined the list with 003's migration — until that has been
+// run, every read here 400s on the missing column.
 const RECEIPT_COLUMNS =
-  "id, store, category, price, discount, discount_percentage, note, date, updated_at";
+  "id, store, category, price, discount, discount_percentage, note, date, subscription_id, updated_at";
 const DISBURSEMENT_COLUMNS =
   "id, entity, amount, date_received, reason, refunded_from_receipt, updated_at";
+const SUBSCRIPTION_COLUMNS =
+  "id, name, store, category, price, interval_unit, interval_count, start_date, charges_generated, active, note, created_at, updated_at";
 
-type SelectedReceiptRow = Omit<Receipt, "subscription_id">;
+type SelectedReceiptRow = Receipt;
 
 function toReceipt(row: SelectedReceiptRow): Receipt {
   return {
@@ -35,9 +44,7 @@ function toReceipt(row: SelectedReceiptRow): Receipt {
     // but don't assume every row was written through that constraint.
     discount: row.discount ?? 0,
     discount_percentage: row.discount_percentage ?? 0,
-    // Phase 3 adds the column and RECEIPT_COLUMNS starts selecting it. Until
-    // then the field exists in the type with no source behind it.
-    subscription_id: null,
+    subscription_id: row.subscription_id ?? null,
   };
 }
 
@@ -59,6 +66,11 @@ function definedEntries<T extends object>(patch: T): Partial<T> {
 /** PostgREST surfaces a blocked delete as `23503: foreign_key_violation`. */
 function isForeignKeyViolation(error: PostgrestError): boolean {
   return error.code === "23503";
+}
+
+/** `23505: unique_violation` — for charges, this means "already recorded". */
+function isUniqueViolation(error: PostgrestError): boolean {
+  return error.code === "23505";
 }
 
 /**
@@ -274,6 +286,164 @@ export class SupabaseDataSource implements DataSource {
     }
     if (!data || data.length === 0) {
       throw new NotFoundError(`Disbursement ${id} not found`);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Subscriptions
+  // -------------------------------------------------------------------------
+
+  async loadSubscriptions(): Promise<Subscription[]> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("subscriptions")
+      .select(SUBSCRIPTION_COLUMNS)
+      .order("active", { ascending: false })
+      .order("name", { ascending: true });
+    if (error) throw new Error(`Failed to load subscriptions: ${error.message}`);
+    return data as Subscription[];
+  }
+
+  async insertSubscription(
+    input: NewSubscriptionInput,
+  ): Promise<Subscription> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("subscriptions")
+      .insert({
+        name: input.name,
+        store: input.store,
+        category: input.category,
+        price: input.price,
+        interval_unit: input.interval_unit,
+        interval_count: input.interval_count ?? 1,
+        start_date: input.start_date,
+        active: input.active ?? true,
+        note: input.note ?? null,
+      })
+      .select(SUBSCRIPTION_COLUMNS)
+      .single();
+    if (error) {
+      throw new Error(`Failed to insert subscription: ${error.message}`);
+    }
+    return data as Subscription;
+  }
+
+  async updateSubscription(
+    id: number,
+    patch: UpdateSubscriptionInput,
+  ): Promise<Subscription> {
+    const payload = definedEntries(patch);
+    if (Object.keys(payload).length === 0) {
+      return this.subscriptionById(id);
+    }
+
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("subscriptions")
+      .update(payload)
+      .eq("id", id)
+      .select(SUBSCRIPTION_COLUMNS);
+    if (error) {
+      throw new Error(`Failed to update subscription: ${error.message}`);
+    }
+    const row = (data as Subscription[])[0];
+    if (!row) throw new NotFoundError(`Subscription ${id} not found`);
+    return row;
+  }
+
+  private async subscriptionById(id: number): Promise<Subscription> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("subscriptions")
+      .select(SUBSCRIPTION_COLUMNS)
+      .eq("id", id);
+    if (error) throw new Error(`Failed to load subscription: ${error.message}`);
+    const row = (data as Subscription[])[0];
+    if (!row) throw new NotFoundError(`Subscription ${id} not found`);
+    return row;
+  }
+
+  async deleteSubscription(id: number): Promise<void> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("subscriptions")
+      .delete()
+      .eq("id", id)
+      .select("id");
+    if (error) {
+      // Generated receipts reference it. They keep their provenance rather than
+      // having it quietly discarded by an `on delete set null` — pause the
+      // subscription instead.
+      if (isForeignKeyViolation(error)) {
+        throw new ForeignKeyViolationError(
+          "This subscription has generated receipts. Pause it instead, or delete those receipts first.",
+        );
+      }
+      throw new Error(`Failed to delete subscription: ${error.message}`);
+    }
+    if (!data || data.length === 0) {
+      throw new NotFoundError(`Subscription ${id} not found`);
+    }
+  }
+
+  async receiptsForSubscription(id: number): Promise<Receipt[]> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("receipts")
+      .select(RECEIPT_COLUMNS)
+      .eq("subscription_id", id)
+      .order("date", { ascending: false });
+    if (error) {
+      throw new Error(`Failed to load generated receipts: ${error.message}`);
+    }
+    return (data as SelectedReceiptRow[]).map(toReceipt);
+  }
+
+  async insertSubscriptionCharge(
+    subscription: Subscription,
+    date: string,
+  ): Promise<Receipt> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("receipts")
+      .insert({
+        store: subscription.store,
+        category: subscription.category,
+        price: subscription.price,
+        discount: 0,
+        discount_percentage: 0,
+        // The subscription's name, so a generated row reads as itself in the
+        // receipts table. `subscription_id` is the machine-readable provenance;
+        // this is the human-readable half.
+        note: subscription.name,
+        date,
+        subscription_id: subscription.id,
+      })
+      .select(RECEIPT_COLUMNS)
+      .single();
+
+    if (error) {
+      // Not a failure — `receipts_subscription_charge_uniq` says this exact
+      // charge is already on the ledger. See errors.ts and FEATURES.md §6.4.
+      if (isUniqueViolation(error)) {
+        throw new UniqueViolationError(
+          `Charge for subscription ${subscription.id} on ${date} already exists`,
+        );
+      }
+      throw new Error(`Failed to insert subscription charge: ${error.message}`);
+    }
+    return toReceipt(data as SelectedReceiptRow);
+  }
+
+  async setChargesGenerated(id: number, count: number): Promise<void> {
+    const { error } = await this.supabase
+      .schema(SCHEMA)
+      .from("subscriptions")
+      .update({ charges_generated: count })
+      .eq("id", id);
+    if (error) {
+      throw new Error(`Failed to advance charge counter: ${error.message}`);
     }
   }
 }

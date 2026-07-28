@@ -22,3 +22,23 @@ export function addDaysISO(dateISO: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/**
+ * Today's date in a named IANA zone, as "YYYY-MM-DD".
+ *
+ * `todayISO()` in `filters.ts` uses the *server's* local zone. On Vercel that
+ * is UTC, so a midnight-UTC cron would date charges a day early relative to
+ * Eastern time. Everything user-facing keeps using `todayISO()`; only the
+ * subscription runner needs a zone-anchored "today", because it is the one
+ * thing deciding what date to stamp on a row nobody is watching it write.
+ *
+ * `en-CA` formats as YYYY-MM-DD, which is exactly this app's date convention.
+ */
+export function todayInZone(timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}

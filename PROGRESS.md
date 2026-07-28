@@ -117,11 +117,29 @@ See `migration.md` for the full record of migration-time decisions (data layer d
   - **`/manage` has no `FilterBar`**, same reasoning as `/stores`: the row you came to fix is as likely to be two years old as two days.
   - Nav's "Manage ▾" popover now holds Stores and Receipts & disbursements. Subscriptions joins them in Phase 3.
 
+  - **Sticky edit column (you asked for this).** The per-row edit button is now pinned to the right edge of the horizontal scroll container in all three editable tables (`receipts-table`, `disbursements-table`, the store modal's receipt list) rather than needing to be scrolled to. Each row carries a named `group/row` class so the pinned cell can mirror the row's own hover / selected background — a sticky cell must set a solid background or the columns scroll through it, and without the group it would punch an unshaded hole through every highlight.
+
+- **`FEATURES.md` Phase 3 — subscriptions (this session).** The largest phase, and the only one with a new security boundary.
+  - **`003_subscriptions.sql`** — the table, `receipts.subscription_id`, and the load-bearing part: `unique (subscription_id, date) where subscription_id is not null`. **You still have to run it**, then regenerate `src/types/database.ts`.
+  - **Recurrence is derived, never accumulated** (`src/lib/subscriptions.ts`). `nthChargeDate` computes the *nth occurrence from `start_date`*, so a 31st-of-the-month subscription clamps to Feb 28 and then returns to Mar 31. Repeatedly adding a month instead would have drifted it to the 28th permanently the first time it passed February — the clamp is what makes that structurally impossible rather than merely avoided. `nextChargeDate` is a pure function of `start_date` + interval + `charges_generated`, so there is nothing for it to desync from.
+  - **The runner catches up; it never asks "is today the day"** (`src/lib/subscriptions-runner.ts`). A skipped day self-heals, a double run is a no-op, a failed insert retries tomorrow, and a first run and a backfill are the same code path. Three ordering rules inside it are load-bearing:
+    1. Charges process oldest-first.
+    2. **A `23505` unique violation is success-already-recorded, not a failure.** It means the receipt is on the ledger and only the counter fell behind — the crash window between the insert and the counter advance. This is the single most important behaviour in the phase and the one most likely to be "fixed" into a bug by someone who doesn't see why it's there; it's commented at both the throw site (`errors.ts`) and the catch site.
+    3. A genuine failure **stops that subscription's loop**, and the counter advances only past the consecutive successes — otherwise the failed charge would be stranded and the ones after it skipped over.
+  - **New env-var-shaped security boundary.** `GET /api/cron/subscriptions` is the one handler that cannot call `requireOwnerForApi()` — a cron invocation has no session. It gates on a timing-safe `CRON_SECRET` bearer instead and **503s when the secret is unset** (off, not open). `CLAUDE.md`'s hard rules now name it as the single explicit exception.
+    - **This also required the first `/api` entry in the proxy's `PUBLIC_PATHS`**, which FEATURES.md doesn't mention and which would otherwise have been a silent no-op bug: the deny-by-default proxy 401s any API request without a session, so the cron would have been rejected before the handler ever ran and the schedule would simply never have fired — with nothing in the logs pointing at the cause. The exemption is exactly as wide as that one handler; anything else added under `/api/cron` inherits it and must bring its own gate.
+  - **The manual trigger is a separate owner-gated route** (`POST /api/subscriptions/run-due`), not the cron endpoint with a header attached, because the browser must never see `CRON_SECRET`. Both are thin wrappers over the same `runDueSubscriptionCharges()`, which is what lets the whole scheduled path be exercised locally before the app is ever deployed (§7.5).
+  - **`SubscriptionRunResult` lives in `subscriptions.ts`, not the runner.** The runner is `server-only` and the "Run due charges" button needs the shape to render its toast. A type-only import would erase in practice, but keeping it in the pure module means the client has no edge into server code at all.
+  - **Email never affects the ledger** (`src/lib/email.ts`). Receipts are written first, the send is wrapped and swallowed into a log line, and unset Resend vars just skip it. It only sends when something *happened* — a daily "0 charges" mail trains you to ignore the one that matters, and `skipped` alone doesn't count because a skip is the system working.
+  - **The create form projects the backfill before you save.** `dueChargesFor()` runs live in the form and states "this will create 7 receipts totalling $111.93 on the next run". Silent backfill of a mistyped `start_date` is the worst failure mode this feature has; the per-run cap of 60 bounds the damage and the form warns when a projection hits it.
+  - **`Overdue` is the real safety net**, not the email. A subscription still showing overdue a day later means the cron isn't running — visible in the UI you actually look at.
+  - **`SqliteDataSource` throws on every subscription method** (D8) rather than returning `[]`. An empty list would make the page look empty rather than unavailable, and a "run due charges" that quietly no-ops is worse than one that refuses.
+  - **The `Sub` badge from Phase 2 now has data behind it** — `subscription_id` joined `RECEIPT_COLUMNS` with this migration. It still links nowhere; §6.9's "view generated receipts" filter into `/manage` is noted below as a follow-up rather than built, since `/manage` has no URL-driven filter state today.
+  - `pnpm add resend` (6.18.0). New env vars: `APP_TIMEZONE`, `CRON_SECRET`, `RESEND_API_KEY`, `SUBSCRIPTION_EMAIL_TO`, `SUBSCRIPTION_EMAIL_FROM` — all documented in `.env.example`. `vercel.json` committed with the single Hobby-plan cron slot at `0 12 * * *`.
+
 ## In progress
 
-- **Phase 3 of [`FEATURES.md`](FEATURES.md) — designed, not yet built.** The subscriptions system. Governing principle: *receipts are the ledger of facts; everything else generates into it or reads from it* — which is why subscriptions generate receipts rather than entering the math, and why there is no price-history table.
-  - New security boundary: `/api/cron/subscriptions` is the app's first handler that cannot call `requireOwnerForApi()`. It gates on `CRON_SECRET` instead, fail-closed when unset. `CLAUDE.md`'s hard rules get an explicit exception so it doesn't read as a missing guard.
-  - Two Phase-2 stubs are waiting on it and are **not** bugs: the `Sub` badge in `ReceiptsTable` never renders (nothing sets `subscription_id` until 003's migration) and links nowhere (a badge pointing at a 404 is worse than one that only labels), and §6.9's "view generated receipts" link into `/manage` doesn't exist yet.
+- **Nothing — Phases 0–3 of [`FEATURES.md`](FEATURES.md) are built.** What's left is your verification pass and the deploy (see the backlog below), which is the point at which the *scheduled* path can be tested at all.
 
 ## Needs your attention (Phase 0)
 
@@ -135,6 +153,17 @@ See `migration.md` for the full record of migration-time decisions (data layer d
 ## Needs your attention (Phase 1) — cleared
 
 ~~Typecheck, lint, click through `/stores`.~~ **Done, works.** The nested-Dialog stack (`ReceiptEditor` over `StoreDetailModal`) and the `""`-controlled merge `Select`s both behaved.
+
+## Needs your attention (Phase 3)
+
+1. **Run `supabase/migrations/003_subscriptions.sql`**, then regenerate `src/types/database.ts`:
+   `npx supabase gen types typescript --project-id <ref> --schema public --schema finance_tracker`
+   I hand-added the `subscriptions` table and `receipts.subscription_id` to that file so the code typechecks before you run the generator — **replace it with the real output** rather than trusting my edit, and keep the whole file including the other apps' `public` tables.
+   **Until the migration runs, every receipt read 400s**: `RECEIPT_COLUMNS` now selects `subscription_id`, and PostgREST rejects a select naming a column that doesn't exist. This is the same trap as 002 — the app breaks on *reads*, not just on subscriptions.
+2. **Verify the core loop the way §6.11 specifies:** create a monthly subscription dated 3 months ago → the create form should warn it will write 3 receipts → "Run due charges" writes exactly 3 → run it again → writes 0. That second run is the important one; it exercises the 23505 replay rule.
+3. **Set the new env vars locally** (`.env.local`) before testing email: `RESEND_API_KEY`, `SUBSCRIPTION_EMAIL_TO=kyleaphagerman@gmail.com`, `SUBSCRIPTION_EMAIL_FROM=Finance Tracker <finances@kylehagerman.dev>`. Leaving them unset is fine — the run just skips the notification and logs a warning.
+4. **The scheduled path cannot be tested until you deploy** (Vercel crons only fire on production deployments). `POST /api/subscriptions/run-due` exercises everything except the trigger. Post-deploy: set `CRON_SECRET` in Vercel, confirm the endpoint 401s without the bearer and 503s if the var is missing, then wait for one firing and read the run JSON in the function logs.
+5. **`vercel.json` must be committed before the first deploy** or the cron simply won't exist.
 
 ## Needs your attention (Phase 2)
 
@@ -179,6 +208,9 @@ These need your Supabase / GCP / Vercel account access, which Claude doesn't hav
 - [ ] Confirm the Daily page's per-category (not per-receipt) stacked-bar aggregation is acceptable — see `migration.md` §14a.
 - [ ] Confirm ISO-week bucketing (Mon-Sun) is fine for `/savings` and `/disbursements` weekly views — differs slightly from the old pandas `resample("W")` (Sunday-ending weeks). See `migration.md` §15.
 - [ ] Decide whether the quick-add "refund of receipt" combobox should stay unscoped (searches *all* receipts) once the dataset grows large.
+- [ ] **§6.9's "view generated receipts" link isn't built.** It would filter `/manage` by `subscription_id`, and `/manage`'s filters are local component state with no URL-driven entry point. Building it means giving that page a query-param filter — worth doing as one piece rather than a one-off. The `Sub` badge renders today but links nowhere.
+- [ ] **Server-side pagination on `/manage`.** Explicitly out of scope per `FEATURES.md` §5; the trigger to revisit is the Receipts tab feeling sluggish on load, not a row count.
+- [ ] **Appendix A — pre-announced subscription price changes.** Not built, by design. The trigger: you get a "your price increases on <date>" email and want to record it now without corrupting today's numbers. Until then, edit the subscription's `price` when it rises; past receipts keep the old amount because they are facts.
 - [x] ~~The disbursement quick-add's **Entity** field has the same free-text-consistency problem the Store field just got a datalist for~~ — **done**, it now uses the same `AutocompleteInput`, sourced from `/api/disbursements`.
 - [ ] TypeScript is pinned to latest-5.x (5.9.3) and ESLint to latest-9.x (9.39.5), not the newest majors (TS 7, ESLint 10) — see `migration.md`'s flagged decisions for why. Revisit once the ecosystem (`typescript-eslint`, `eslint-config-next`) catches up.
 - [ ] A post-build code review (8-angle, see session log) surfaced cleanup-tier items left un-fixed by design (correctness bugs were fixed; these are quality/consistency only):
