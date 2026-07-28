@@ -1,5 +1,5 @@
 /**
- * The I/O half of spending reports (REPORTS.md §4.2).
+ * The I/O half of spending reports (ARCHITECTURE.md).
  *
  * Mirrors `subscriptions-runner.ts`: every entry point — the `GET /api/reports`
  * preview, the `POST /api/reports/send` button, and the cron's Saturday send —

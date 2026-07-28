@@ -17,7 +17,7 @@ import { REPORT_PERIODS } from "@/lib/config";
 import { isReportPeriod, REPORT_PERIOD_VALUES, type ReportPeriod } from "@/lib/reports";
 
 /**
- * Spending reports (REPORTS.md §5).
+ * Spending reports (ARCHITECTURE.md).
  *
  * **Deliberately no `FilterBar`.** Every other analysis page is a lens over a
  * date range; this one's window is defined by its period, and a date filter on

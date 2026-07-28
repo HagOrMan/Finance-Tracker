@@ -219,7 +219,7 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
   );
 
   /**
-   * Category autofill (FEATURES.md §4.6). The Stores page finds mis-filed
+   * Category autofill (ARCHITECTURE.md). The Stores page finds mis-filed
    * receipts; this is what stops them being created.
    *
    * Derived from history — deliberately **no store→category defaults table**.

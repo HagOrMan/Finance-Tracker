@@ -9,7 +9,7 @@ export interface CategoryMixSegment {
 
 /**
  * A thin horizontal stacked bar showing how one store's receipts split across
- * categories (FEATURES.md §4.4).
+ * categories (ARCHITECTURE.md).
  *
  * Colors come from the caller's `useCategoryColors` map — per `CLAUDE.md` that
  * hook is the *only* source of category color in the app, so this component

@@ -8,10 +8,10 @@ import { bulkUpdateDisbursementsSchema } from "@/lib/data/schemas";
 /**
  * `PATCH /api/disbursements/bulk` — the receipts endpoint's twin.
  *
- * Not in FEATURES.md's original Phase 0 table; added because entity names have
+ * Not in ARCHITECTURE.md's original Phase 0 table; added because entity names have
  * exactly the store problem ("Kyle" vs "kyle h" vs "Kyle Hagerman") and merging
  * them is the same operation on a different column. See the amendment in
- * FEATURES.md §4.7.
+ * ARCHITECTURE.md.
  */
 export async function PATCH(request: Request) {
   const denied = await requireOwnerForApi();

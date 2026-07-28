@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
  * A two-click button: the first click arms it, the second runs it.
  *
  * Used for the store/entity bulk actions, which rewrite dozens of rows at once
- * with no undo (FEATURES.md §4.5 — "every bulk action shows the affected count
+ * with no undo (ARCHITECTURE.md — "every bulk action shows the affected count
  * and requires a confirm click"). The armed label carries the count, so the
  * confirmation states what is about to happen rather than just asking twice.
  *

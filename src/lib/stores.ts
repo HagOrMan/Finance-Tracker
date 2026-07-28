@@ -9,7 +9,7 @@ import {
 /**
  * The Stores aggregate — a *lens over the receipts*, not a stored thing.
  *
- * FEATURES.md §0: a store's category is an observation over the ledger, never a
+ * ARCHITECTURE.md: a store's category is an observation over the ledger, never a
  * fact recorded anywhere. That is why this file has no persistence of any kind
  * and why "fixing" a store means rewriting its receipts rather than saving a
  * mapping. The field-agnostic half (grouping keys, similarity, Levenshtein)
@@ -154,7 +154,7 @@ export function storeReceipts(
 
 /**
  * The ids of a group's receipts filed under anything other than `category` —
- * the "set only the M receipts not in <dominant>" action (FEATURES.md §4.5),
+ * the "set only the M receipts not in <dominant>" action (ARCHITECTURE.md),
  * which is the common case: one store mis-filed a handful of times.
  */
 export function receiptIdsOutsideCategory(

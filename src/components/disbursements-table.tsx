@@ -46,7 +46,7 @@ type TypeFilter = "All" | "Refund" | "Standalone";
  * The disbursements table, shaped like `receipts-table.tsx` — same
  * `editable` / `selectable` opt-ins, same selection semantics.
  *
- * FEATURES.md §5 is emphatic that this tab matters as much as the receipts one:
+ * ARCHITECTURE.md is emphatic that this tab matters as much as the receipts one:
  * a wrong refund amount silently corrupts `actual_price` on every net-paid
  * figure across the app, and until now there was no way to fix one.
  *

@@ -53,11 +53,11 @@ import {
   type StoreGroup,
 } from "@/lib/stores";
 
-/** Matches `bulkUpdateReceiptsSchema`'s id-list cap — see FEATURES.md §3.3. */
+/** Matches `bulkUpdateReceiptsSchema`'s id-list cap — see ARCHITECTURE.md. */
 const BULK_ID_LIMIT = 1000;
 
 /**
- * The store drill-down (FEATURES.md §4.5). Dialog on desktop, Drawer on mobile,
+ * The store drill-down (ARCHITECTURE.md). Dialog on desktop, Drawer on mobile,
  * matching `receipt-editor.tsx` and `quick-add-modal.tsx`.
  *
  * The bulk bar is the reason the page exists: recategorize, rename and merge

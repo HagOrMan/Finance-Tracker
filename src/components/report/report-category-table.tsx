@@ -14,7 +14,7 @@ import { formatCurrency } from "@/lib/format";
 import { formatShortDate, type SpendingReport } from "@/lib/reports";
 
 /**
- * Where the habitual spending went (REPORTS.md §3.1).
+ * Where the habitual spending went (ARCHITECTURE.md).
  *
  * Bars are **scaled to the largest row, not to the total**: the top category is
  * then always a full bar and the shape below it is readable. Scaling to the

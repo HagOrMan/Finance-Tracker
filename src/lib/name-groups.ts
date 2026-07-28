@@ -2,14 +2,14 @@
  * Field-agnostic name grouping — the string normalizers, the edit distance and
  * the duplicate-candidate rules shared by the Stores and Entities aggregates.
  *
- * FEATURES.md §4.7 moved these out of `stores.ts`: nothing in this file knows
+ * ARCHITECTURE.md moved these out of `stores.ts`: nothing in this file knows
  * what a store or an entity *is*, and there should be exactly one similarity
  * implementation sitting under both row models. `src/lib/stores.ts` and
  * `src/lib/entities.ts` build their aggregates on top.
  */
 
 /**
- * Tier 1 — the automatic grouping key (FEATURES.md D6).
+ * Tier 1 — the automatic grouping key (ARCHITECTURE.md).
  *
  * Only differences that are unambiguously the same name: surrounding
  * whitespace, internal runs of whitespace, and case. `"Netflix"`, `" netflix "`
@@ -28,14 +28,14 @@ export function nameGroupKey(name: string): string {
 // Built with String.fromCharCode rather than written as a regex literal on
 // purpose: the marks themselves are zero-width and render on top of whatever
 // character precedes them, so a literal class is invisible in most editors and
-// a stray one silently changes what it matches. FEATURES.md §4.2 flags this.
+// a stray one silently changes what it matches. ARCHITECTURE.md flags this.
 const COMBINING_MARKS = new RegExp(
   `[${String.fromCharCode(0x0300)}-${String.fromCharCode(0x036f)}]`,
   "g",
 );
 
 /**
- * Tier 2 — the suggestion-only similarity key (FEATURES.md D6).
+ * Tier 2 — the suggestion-only similarity key (ARCHITECTURE.md).
  *
  * Strips accents, legal suffixes, TLDs, store numbers and every non-alphanumeric
  * character, so `"Safeway #4021"`, `"safeway"` and `"Safeway Inc."` all reduce
@@ -175,7 +175,7 @@ export interface SpellingStat {
  * Rank a group's raw spellings: most frequent first, ties broken toward the
  * most recently used one, then alphabetically so the order is stable.
  *
- * The first entry is the group's display name (FEATURES.md §4.2) — the merge UI
+ * The first entry is the group's display name (ARCHITECTURE.md) — the merge UI
  * shows the rest so you can see what you are about to normalize away.
  */
 export function rankSpellings(

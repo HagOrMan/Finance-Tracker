@@ -140,7 +140,7 @@ export function useAddDisbursement() {
 }
 
 // ---------------------------------------------------------------------------
-// Edit / delete (FEATURES.md Phase 0)
+// Edit / delete (ARCHITECTURE.md Phase 0)
 //
 // Deliberately no optimistic updates. Single user, and on a personal finance
 // ledger a wrong-looking number that silently reverts is worse than a 200ms
@@ -238,7 +238,7 @@ export function useDeleteDisbursement() {
 }
 
 // ---------------------------------------------------------------------------
-// Subscriptions (FEATURES.md Phase 3)
+// Subscriptions (ARCHITECTURE.md Phase 3)
 //
 // Anything that can *generate a charge* invalidates RECEIPTS_KEY as well as
 // SUBSCRIPTIONS_KEY — a generated charge is a receipt, and every total in the
@@ -320,13 +320,13 @@ export function useRunDueCharges() {
 }
 
 // ---------------------------------------------------------------------------
-// Spending reports (REPORTS.md)
+// Spending reports (ARCHITECTURE.md)
 //
 // The report is fetched rather than aggregated from the two caches above, even
 // though every row it needs is already in them. The reason is "today":
 // `APP_TIMEZONE` is server-only, so a browser-built report would use the
 // browser's zone and could disagree with the emailed one by a day at every
-// window boundary. See REPORTS.md §4.4.
+// window boundary. See ARCHITECTURE.md.
 // ---------------------------------------------------------------------------
 
 const REPORT_KEY = (period: ReportPeriod) => ["report", period];

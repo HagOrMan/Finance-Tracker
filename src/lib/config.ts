@@ -17,12 +17,12 @@ export const EXTRAPOLATION_FORWARD_DAYS = 30;
 export const APP_TIMEZONE = process.env.APP_TIMEZONE || "America/Toronto";
 
 // ---------------------------------------------------------------------------
-// Spending reports (REPORTS.md)
+// Spending reports (ARCHITECTURE.md)
 // ---------------------------------------------------------------------------
 
 /**
  * The three report sizes. One rule for all of them: **a window is the `days`
- * days ending yesterday** (REPORTS.md §2.1).
+ * days ending yesterday** (ARCHITECTURE.md).
  *
  * Run on a Saturday, the weekly window *is* last Sat→Fri — not because Saturday
  * is special-cased anywhere, but because that's what "the 7 days ending
@@ -41,7 +41,7 @@ export const REPORT_PERIODS = {
 } as const;
 
 /**
- * Categories held out of the headline figure and every comparison (REPORTS.md
+ * Categories held out of the headline figure and every comparison (ARCHITECTURE.md
  * §2.2).
  *
  * This is **policy, not data** — spending here is real, but it is lumpy and

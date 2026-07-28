@@ -43,7 +43,7 @@ export async function DELETE(_request: Request, { params }: Context) {
   try {
     const source = await getDataSource();
 
-    // Hard delete, refused when anything refunds this receipt (FEATURES.md D5)
+    // Hard delete, refused when anything refunds this receipt (ARCHITECTURE.md)
     // — a cascade would silently destroy refund records, and a soft delete
     // would cost a filter in every read path forever. Checked up front so the
     // response can name the blocking rows instead of returning a bare FK error.

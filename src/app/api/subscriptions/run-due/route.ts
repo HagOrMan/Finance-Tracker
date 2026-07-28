@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  * are thin wrappers over the same `runDueSubscriptionCharges()` — which is what
  * lets the entire scheduled path (due detection, insert, counter advance, the
  * 23505 replay rule, the cap, the email) be exercised locally before the app
- * has ever been deployed. Only the trigger differs. See FEATURES.md §7.5.
+ * has ever been deployed. Only the trigger differs. See ARCHITECTURE.md.
  *
  * Note the static `run-due` segment wins over the sibling `[id]` route in
  * Next's matcher, and ids are numeric, so nothing can collide with it.

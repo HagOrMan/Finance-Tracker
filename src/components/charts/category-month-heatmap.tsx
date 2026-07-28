@@ -1,7 +1,7 @@
 import { formatCurrency } from "@/lib/format";
 
 // Hand-built as a CSS grid rather than a charting-library heatmap — see
-// migration.md §3 for why (Recharts has no native heatmap mark).
+// ARCHITECTURE.md for why (Recharts has no native heatmap mark).
 export function CategoryMonthHeatmap({
   categories,
   months,

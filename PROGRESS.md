@@ -1,379 +1,82 @@
 # PROGRESS.md
 
-Rolling log of what's been built, what's in progress, and what's next. **Update this every session.**
+Current state and open work. **Update this as you go.** Durable "why" belongs in
+`ARCHITECTURE.md`, not here — this file should stay short enough to read in full.
 
 ---
 
-## Decisions
+## State
 
-See `migration.md` for the full record of migration-time decisions (data layer design, auth approach, palette derivation, package version pins, etc). Key ones repeated here for quick reference:
+**Built, deployed, and running against real data.** Every page, the write path,
+stores/entities hygiene, the CRUD tables, subscriptions, and spending reports
+are live. The SQLite→Supabase backfill has run; all three migrations in
+`supabase/migrations/` have been applied.
 
-- [x] Data source: Supabase (`finance_tracker` schema), with a `better-sqlite3` local-dev-only alternate behind `DATA_SOURCE` env var.
-- [x] Auth: Supabase Auth, **Google OAuth only**, against the **shared** Supabase project the other personal apps use. Because `auth.users` is a shared pool, a valid session proves identity but not access — authorization is a per-app `OWNER_USER_IDS` env allowlist (`src/lib/auth.ts`), on top of RLS. Reworked to match the shared-project auth guide; see "Auth rework" under Done.
-- [x] Charts: Recharts, except the Monthly page's category×month heatmap (hand-built CSS grid).
-- [x] Filter persistence: Zustand + localStorage, not URL params.
-- [x] Category color palette: dataviz-skill-derived, brand-tuned (turquoise/blue/violet substituted into a validated 8-hue categorical anchor), tinted extension for categories 9-12, cycling beyond that.
-- [x] Old Streamlit app preserved in `legacy_streamlit/`, not deleted.
+Routes: `/` `/daily` `/monthly` `/categories` `/savings` `/disbursements`
+`/reports` · `/stores` `/manage` `/subscriptions` behind the "Manage ▾" menu.
 
-## Done
+## Open
 
-- **Full Next.js migration (this session)** — entire app rebuilt from the Streamlit original:
-  - Root scaffold: `package.json` (pnpm, pinned-latest versions), `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`, `components.json`.
-  - `src/components/ui/*` — hand-authored shadcn/ui primitives (button, card, input, label, dialog, drawer, tabs, select, checkbox, popover, command, table, sonner, badge, separator).
-  - Auth: `src/lib/supabase/{client,server,middleware}.ts`, `src/middleware.ts`, `/login`, `/auth/callback`. (Since reworked — see the auth entries below; `src/middleware.ts` is now `src/proxy.ts`, and `client.ts` is gone.)
-  - Data layer: `src/lib/data/{types,merge,source,supabase-source,sqlite-source,schemas}.ts`.
-  - Shared logic ports: `src/lib/colors.ts`, `src/lib/filters.ts`, `src/lib/savings.ts`, `src/lib/dates.ts`, `src/lib/format.ts`.
-  - State: `src/store/filters-store.ts` (+ `FiltersHydrator` for SSR-safe rehydration), `src/hooks/use-finance-data.ts`, `src/hooks/use-filtered-receipts.ts`, `src/hooks/use-category-colors.ts`.
-  - Shared UI: `src/components/{nav,filter-bar,multi-select,receipts-table,quick-add-modal,app-chrome,providers,theme-toggle}.tsx`.
-  - Chart components: `src/components/charts/*` (stat-card, single-series-bar, stacked-category-bar, category-pie, category-line, category-month-heatmap, cumulative-extrapolation, chart-tooltip).
-  - All 6 pages: `/` (Overview), `/daily`, `/monthly`, `/categories`, `/savings`, `/disbursements`.
-  - Quick-add modal (new feature — the old app was read-only): floating button, Dialog on desktop / Drawer on mobile, Receipt + Disbursement tabs, `POST /api/receipts` and `POST /api/disbursements` (zod-validated, RLS-scoped).
-  - `scripts/migrate-sqlite-to-supabase.ts` — one-time backfill script (not yet run — needs your Supabase credentials).
-  - `.env.example`, rewrote `CLAUDE.md` for the new stack, moved `app.py`/`pages/`/`finance_tracker/`/`config.py`/`SPEC.md`/`.venv`/`requirements.txt`/`run.sh` into `legacy_streamlit/`.
+1. **Read one cron firing's run JSON** in the Vercel function logs. On a
+   non-Saturday it should carry
+   `weeklyReport: { sent: false, subject: null, reason: "not-saturday" }` —
+   that line exists so a broken Saturday is diagnosable rather than silent. Then
+   confirm the first real Saturday send. This is the only thing deployment
+   didn't immediately verify, because a firing arrives on the cron's timetable.
+2. **`/manage` has no URL-driven filters**, so the `Sub` badge on generated
+   receipts links nowhere. Giving that page query-param filter state is worth
+   doing as one piece rather than as a one-off link.
+3. **The Entities tab's row list is read-only.** `DisbursementEditor` exists and
+   would drop straight in — it just never got wired into
+   `entity-detail-modal.tsx`, while the Stores tab's equivalent rows open
+   `ReceiptEditor`. Small, self-contained fix.
+4. **Three judgment calls still yours**, none blocking:
+   - ISO-week bucketing (Mon–Sun) on `/savings` and `/disbursements` differs
+     from the old Streamlit app's pandas `resample("W")` (Sunday-ending weeks).
+   - The Daily stacked bar sums same-day receipts within a category into one
+     segment; the old app drew one segment per receipt. Every receipt is still
+     listed in the table below the chart.
+   - The quick-add "refund of receipt" combobox searches *all* receipts.
+5. **TypeScript is pinned to 5.x and ESLint to 9.x**, not the newest majors —
+   `typescript-eslint` and `eslint-config-next` peer ranges hadn't caught up.
+   Revisit when they have.
 
-- **Recharts `<Cell>` deprecation + a monthly-page type error (this session)**
-  - `<Cell>` is deprecated in Recharts 3 and removed in 4.0. Replaced in `src/components/charts/category-pie-chart.tsx` and `src/components/charts/single-series-bar-chart.tsx` with a per-datum `fill` on the chart data. Chose that over the officially-suggested `shape` render prop because Recharts also reads `fill` off the datum for the **legend swatch and tooltip colour** — a custom `shape` only recolours the mark and leaves the legend grey. No other `<Cell>` usages exist (the other hits are shadcn `TableCell`).
-  - `src/app/monthly/page.tsx` heatmap accumulation: `values[r.category] ??= {}` assigns but doesn't narrow the index expression, so the following `values[r.category][m]` was still "possibly undefined" under `noUncheckedIndexedAccess`. Bound the row to a local instead.
+## Known non-issues
 
-- **Auth rework to the shared-project pattern (this session)** — Supabase Auth realigned with the shared-Supabase-project auth guide, Google-only:
-  - New `src/lib/env.ts` (`requireEnv`), `src/lib/auth.ts` (edge-safe `sanitizeNextPath` / `ownerUserIds` / `isOwnerUserId`), `src/lib/auth-server.ts` (`server-only`: `getSessionUser`, `isOwner`, `requireUser`, `requireOwnerForApi`).
-  - `src/lib/supabase/server.ts` is now `cache()`-wrapped and `server-only`, so concurrent queries in one request share a client instead of racing to redeem the same refresh token (`PGRST303: JWT issued at future`).
-  - `src/lib/supabase/middleware.ts`: process-wide single-flight around `getUser()` keyed on the raw Cookie header (same race, one layer up); exact-match `PUBLIC_PATHS` instead of loose `startsWith`; owner-allowlist check so an unauthorized visitor gets the login page rather than a shell that errors on every panel; refreshed cookies + Supabase's no-store headers now ride along on the early-return redirects too.
-  - New `src/lib/supabase/actions.ts` — `signInWithGoogle` / `signOut` Server Actions. Sign-in moved off the browser client so the PKCE verifier cookie is written server-side. **Keep the `?apikey=` query param appended to the authorize URL** — without it Supabase's gateway answers "No API key found in request"; it looks removable and isn't.
-  - `/login` is now a Server Component: it prints your Supabase user id so you can bootstrap `OWNER_USER_IDS`, handles the `?error=auth` / not-authorized states, and is `robots: noindex`. New `src/components/auth/{google-sign-in-button,sign-out-button}.tsx`; `src/components/nav.tsx` signs out through the action.
-  - Both API routes now start with `await requireOwnerForApi()` (401/403 JSON) — middleware only protects navigation, route handlers can be hit directly.
-  - Env: added `OWNER_USER_IDS` and `NEXT_PUBLIC_SITE_URL`; renamed `SUPABASE_SERVICE_ROLE_KEY` → `SUPABASE_SECRET_KEY` (same Postgres role, but the new-style `sb_secret_…` key is independently revocable). It is now a runtime requirement in every environment, not just for the backfill — see the Pattern A entry below.
+- **Gmail's message-list column shows the bare sender address** rather than
+  "Finance Tracker", even with the address in Contacts and the name rendering
+  correctly in the opened message. The `From` header is right; Gmail resolves
+  the list column against its own index. Nothing to fix.
 
-- **Moved the data layer to Pattern A: server-only, secret-key-only (this session)** — new `supabase/migrations/finance_tracker_schema.sql`, superseding the schema SQL in `migration.md` §6.
-  - **Why.** All fetching is already server-side — the browser never talks to Supabase, only to `/api/receipts` and `/api/disbursements`. Given that, per-user RLS (`auth.uid() = user_id`) buys nothing: queries arrive as `service_role`, which bypasses RLS unconditionally, so the policies would never be evaluated by anything the app does. They'd be dead code requiring a `user_id` column on every row for an app with exactly one user. auth.md §11 says this is "usually the better call" for owner-only tools, and it also sidesteps the two-identities-two-UUIDs footgun in §10 entirely.
-  - **What protects the data now, in order:** (1) `anon`/`authenticated` hold no privileges on `finance_tracker`, so a request with the public anon key gets `42501` even though the schema is exposed to PostgREST; (2) `enable row level security` with **zero policies** as the backstop, so a stray `grant` doesn't silently publish anything; (3) `OWNER_USER_IDS` in app code.
-  - **RLS stays *enabled*, just without policies.** That distinction is the whole point of the pattern — "RLS off" and "RLS on, zero policies" look identical today and diverge the moment a privilege leaks in. `finance_tracker` has to stay an exposed schema for PostgREST to serve it at all, and the anon key ships in every browser bundle on the shared project.
-  - Two latent hard failures fixed along the way: **no grants on the schema** (a custom schema inherits none of the defaults Supabase attaches to `public`, so every request would have died `42501` before reaching RLS), and **`generated always as identity`**, which rejects the explicit `id` values the backfill needs to preserve the SQLite ids that `refunded_from_receipt` points at (`428C9`; PostgREST can't emit `overriding system value`). Now `generated by default`.
-  - Dropped `user_id` from both tables — nothing to scope against under Pattern A. `MIGRATION_USER_ID` is gone from the backfill script and `.env.example`; the backfill no longer requires you to have signed in first.
-  - Privileges narrowed to **select + insert** — the app issues no UPDATE or DELETE anywhere, so even a leaked secret key can't rewrite or destroy history through PostgREST. §6 of the migration file has the grant to add if you build edit/delete UI, plus a `curl` that verifies the anon key really is locked out (expect permission-denied, **not** an empty array — an empty array would mean privileges are open and only RLS is holding).
-  - **The trade you're accepting:** `requireOwnerForApi()` is now the *only* thing separating you from any other signed-in user on the shared project. A route handler that forgets it is public, with no database backstop. Both handlers have it; that's the invariant to keep.
+## Cleanup backlog
 
-- **`middleware.ts` → `proxy.ts` (this session)** — Next 16 deprecated the `middleware` file convention in favour of `proxy`, which is what `pnpm dev` was warning about. `src/middleware.ts` is now `src/proxy.ts` and the export is renamed `middleware` → `proxy`; `config.matcher` is unchanged. Next *errors* if both files exist, so this had to be a move. Two things worth knowing: **proxy always runs on the Node.js runtime** (which retires any question about dynamic `process.env[name]` lookups via `requireEnv`, and about `OWNER_USER_IDS` reaching an edge bundle), and route segment config such as `export const runtime` is not allowed in the file. The session-refresh helper stays at `src/lib/supabase/middleware.ts` — it isn't a Next convention file, and that path is what the shared auth guide names, so renaming it would desync this repo from the others. There's an official codemod (`npx @next/codemod@latest middleware-to-proxy .`) if you'd rather use it elsewhere; the manual edit here is two lines.
+Quality only — no bugs. Noted so they aren't rediscovered as findings.
 
-- **Code rewiring for Pattern A (this session)** — new `src/lib/supabase/service.ts` (`server-only`, `persistSession: false`); `src/lib/data/source.ts` now builds `SupabaseDataSource` from the secret-key client and no longer needs a Next.js request scope; `src/lib/supabase/server.ts` is now **auth-only** (session reads, OAuth, sign-out) and never touches data. `supabase-source.ts` needed no query changes — it never referenced `user_id`.
+- `src/app/monthly/page.tsx` reimplements the filter bar instead of extending
+  `filter-bar.tsx`, which would need a way to swap its leading control.
+- `src/lib/dates.ts` hand-rolls week/day math; `date-fns` is a dependency and
+  unused. Worth switching if a date bug ever surfaces.
+- Small duplications: the bucket+category `Map` accumulation on the daily and
+  monthly pages, the `discount > 0 || discount_percentage > 0` predicate, the
+  weekly/daily bucketing threshold, and the local table-filter-state pattern in
+  three tables.
+- `src/store/filters-store.ts` exposes no `hasHydrated` gate, so pages briefly
+  render default filters before snapping to the persisted ones.
+- `getDataSource()` no longer needs a Next.js request scope, but nothing in the
+  file says so.
 
-- **Interaction/affordance pass (this session)** — six UX fixes, mostly in the shared primitives so they apply everywhere at once:
-  - **Pointer cursor on everything clickable.** Tailwind v4's Preflight dropped the browser default `cursor: pointer` on `<button>`, which is why nothing had one. Added `cursor-pointer` to the `Button` base variant, `SelectTrigger`, `SelectItem`, `CommandItem` (both were `cursor-default`), `Checkbox`, `TabsTrigger` and the dialog close button. `Label` gets it only via `[[for]]:cursor-pointer` — a label with no `htmlFor` clicks through to nothing, so it shouldn't claim it does.
-  - **Native `title` tooltips on icon buttons.** `Button` now mirrors `aria-label` into `title` unless an explicit `title` is passed, so every icon-only button (all three refresh buttons, quick-add, sign-out, theme toggle) gets a hover tooltip without each caller remembering. `ThemeToggle` passes its own dynamic title ("Switch to light/dark theme"); `SignOutButton` now only sets `aria-label` in its icon-only variant, so the labelled variant doesn't get a tooltip duplicating its own visible text.
-  - **Truncated text shows in full on hover** — `title` on `MultiSelect` options and trigger summary, the quick-add "refund of receipt" combobox rows, the receipts-table note cell and the heatmap's category labels. The `MultiSelect` popover also sizes to its content now (`w-auto min-w-(--radix-popover-trigger-width) max-w-80`) instead of a fixed `w-55`, so most store names simply fit.
-  - **Select all / Deselect all in every `MultiSelect`** — one component, so this lands on all 13 usages (filter bar, monthly, categories, disbursements, receipts table). Deselect all clears just that filter, leaving the rest untouched. Both actions are **search-aware**: with a query typed they act on the matching rows only. To make that honest, filtering moved out of cmdk (`shouldFilter={false}`) into the component, so "all" means exactly what's on screen — cmdk's fuzzy match couldn't be replicated to compute the same set. The action bar stops keydown propagation because cmdk's root handles Enter for its whole subtree and would otherwise also toggle the highlighted option.
-    - Empty selection still means "no filter", so Deselect all is the same as never having filtered. With no search active it hard-clears to `[]` rather than subtracting the visible set — that also drops values persisted in localStorage that are no longer in `options`.
-  - **Store autofill in quick-add** — the Store field stays free text but now suggests every store already used (from the cached `/api/receipts` query, so no extra request). First cut was a native `<datalist>`; replaced after testing with `src/components/autocomplete-input.tsx` — see the entry below.
+## Operational notes
 
-- **Quick-add fixes after first runtime test (this session)**
-  - **`@hookform/resolvers` 3.9.1 → 5.5.7 — this was a real, silent bug.** v3 predates zod 4: it decides "is this a zod error?" with `Array.isArray(error.errors)`, and zod 4 renamed that property to `error.issues`. So the resolver *rethrew* every validation failure instead of returning it as form state — surfacing as `unhandledRejection: ZodError` in the console (what you hit on picking a category, which runs `setValue(…, {shouldValidate: true})`) and meaning **no field error message has ever rendered** in the quick-add form; an invalid submit crashed instead. v5 detects zod 4 by `_zod.traits.has("$ZodError")` and reads `.issues`. The API routes were already correct — they read `parsed.error.issues` directly. Note `pnpm add` alphabetized both dependency blocks in `package.json`; only the resolver version actually changed.
-  - **The upgrade forced the form's input/output split to become explicit.** v5 types the resolver as `Resolver<z.input<S>, Context, z.output<S>>`, and `ResolverOptions<T>` compares invariantly, so `useForm<NewReceiptFormValues>` no longer accepted it (`unknown` vs `number` on the coerced fields). Both forms are now `useForm<Input, unknown, Values>`, with `NewReceiptFormInput` / `NewDisbursementFormInput` (`z.input<…>`) exported alongside the existing `…FormValues` (now spelled `z.output<…>`, same type as the old `z.infer`). This isn't ceremony — it's the truth catching up with runtime: a number `<input>` holds a **string** until zod coerces it, so the values react-hook-form carries while you type really aren't the values `onSubmit` receives.
-  - `refunded_from_receipt` dropped its `z.coerce` — it never passes through a text input (the combobox writes a number or null via `setValue`, and the API reads it off JSON), so coercion only served to widen its form-input type to `unknown` and force casts at every comparison.
-  - **Category `Select` was flipping from uncontrolled to controlled** (React warning on first pick): its value was `isKnownCategory ? category : undefined`, and `undefined` means uncontrolled. Now `""` — Radix's `shouldShowPlaceholder` treats `""` and `undefined` identically for display, but `""` counts as controlled, so the component never switches modes.
-  - **Native `<datalist>` replaced with `src/components/autocomplete-input.tsx`** — the datalist needed several clicks to land a suggestion. Chrome renders it through the same popup as autofill, so it's inconsistent about opening on the first click and about staying open long enough to click an entry (`autoComplete="off"`, which we set to keep form history out of the way, is itself a suspect). The replacement is a plain suggestion list: opens on focus, filters as you type, arrow keys + Enter, `onMouseDown` preventDefault on each row so the input doesn't blur the list away before the click lands, and Escape closes the list without closing the surrounding dialog. The input stays uncontrolled so `register` still owns it — the component takes the current value as `query` purely to filter, and hands picks back through `onPick` → `setValue`.
-
-- **Quick-add bulk entry, entity autosuggest, and a genuinely broken toast (this session)**
-  - **Bulk add.** A "Keep adding" checkbox in both quick-add tabs. When checked, a successful submit fires the toast and **returns early** — no `reset`, no `onDone()` — so the modal stays open with every field exactly as it was; the next entry is usually a small edit of the last. The flag lives on `QuickAddForm` (above the `Tabs`), not per-form, so it survives switching between Receipt and Disbursement. The submit button relabels to "Add … & keep going" so the mode is visible without hunting for the checkbox.
-    - Consequence worth knowing: in bulk mode a disbursement's **Refund of receipt** link is also kept, so submitting twice links two refunds to the same receipt (and halves that receipt's `actual_price` twice). That's the honest reading of "keep the details filled in" and the combobox shows the linked receipt, so it isn't hidden — but it's the one field where "keep" can surprise you. Note the tabs still unmount each other's form (Radix default), so switching tabs mid-session clears that tab's fields; only the checkbox persists.
-  - **Entity autosuggest** on the disbursement tab — same `AutocompleteInput` the Store field uses, sourced from the cached `/api/disbursements` query, so no extra request. Closes the follow-up below.
-  - **The toast was transparent because of an invalid CSS declaration, not a low opacity.** `src/components/ui/sonner.tsx` set `--normal-bg: var(--popover)`, and `--popover` is only the HSL *components* (`180 60% 98%`) — meant to be wrapped in `hsl()`. Sonner's rule is `background: var(--normal-bg)`, so the substitution produced `background: 180 60% 98%`, which is invalid at computed-value time and falls back to the initial value: `transparent`. Same for the text and border colors. Fixed by pointing at the `--color-*` twins (`var(--color-popover)`), which is the same rule already documented for inline chart styling. Also added `border-2!` + `shadow-xl!` and a `border-primary!` / `border-destructive!` accent per toast type — `!` because sonner styles the toast off `[data-sonner-toast][data-styled='true']`, a two-attribute selector that outranks a bare utility class.
-  - **The floating quick-add button wasn't clickable during a toast** because sonner's default position is bottom-right with a 24px viewport offset, and the button is `bottom-6 right-6` (24px) at `size-14` (56px) — a near-total overlap, with the toast at `z-index: 999999999` against the button's `z-30`. Fixed with `offset={{ bottom: "5.75rem", right: "1.5rem" }}` (and the mobile equivalent), which clears the 24px inset + 56px button with ~12px to spare. Also turned on `closeButton`, since a toast was previously only dismissible by swiping or waiting it out.
-
-- **`FEATURES.md` Phase 0 — the write path (this session).** Nothing user-visible; this is the foundation Phases 1–3 sit on. The app could not UPDATE or DELETE anything before this.
-  - **New migration `supabase/migrations/002_mutable_rows.sql`** — `updated_at` on both tables plus a `set_updated_at()` BEFORE UPDATE trigger each, an idempotent restatement of the `update, delete` grants, and two indexes (`receipts_store_idx`, `disbursements_entity_idx`) for the Phase 1 grouping reads. **You still have to run it**, then regenerate `src/types/database.ts` (see "Needs your attention" below).
-  - **Corrected the false security comment** in `finance_tracker_schema.sql` §4. It claimed "only select and insert… even a leaked secret key cannot rewrite or destroy history" while line 192 of the same file already granted `update, delete`. The §6 grant is also promoted out of its "if you later build edit/delete UI" framing — it's a live grant describing what the app now does. `.env.example` says the same thing about `SUPABASE_SECRET_KEY`'s blast radius.
-  - **`Receipt` gained `subscription_id` and `updated_at`; `Disbursement` gained `updated_at`.** `subscription_id` is deliberately **not** in the Supabase select list — the column doesn't exist until Phase 3's migration, and selecting a missing column is a 400 from PostgREST. Both sources hardcode `null` for it until then. The SQLite source coalesces all three, since its dev DB has none of them and never will (these are Postgres-only migrations).
-  - **The discount-default trap is closed.** `schemas.ts` is restructured around defaults-free `receiptFields` / `disbursementFields` bases; `newReceiptSchema` re-applies `.default(0)`, the update schemas don't. Had the update schema been `newReceiptSchema.partial()`, a PATCH that only touched `category` would have arrived carrying `discount: 0` and silently zeroed a real discount on every unrelated edit.
-  - **New `src/lib/data/errors.ts`** (`NotFoundError`, `ForeignKeyViolationError`) and **`src/lib/api.ts`** (`parseIdParam`, `badRequest`, `errorResponse`). The two data sources speak different dialects of failure — a PostgREST `code: "23503"` versus SQLite's constraint message — and neither should reach a response body. Note what is deliberately *not* in `api.ts`: the authorization check. Every handler still writes `await requireOwnerForApi()` as its own first line, because a guard living in a helper is a guard someone can forget.
-  - **4 route files / 6 handlers:** `PATCH`+`DELETE /api/receipts/[id]`, `PATCH /api/receipts/bulk`, `PATCH`+`DELETE /api/disbursements/[id]`, `PATCH /api/disbursements/bulk`. Update payloads are built **only from `parsed.data`**, never the raw body — zod strips unknown keys, and that is the entire mechanism keeping `id`/`created_at`/`updated_at`/`subscription_id` unpatchable.
-  - **The delete guard.** A receipt delete pre-checks `disbursementsForReceipt(id)` and returns 409 with the blocking rows so the UI can list them; the data layer also maps Postgres 23503 onto the same 409 for the check-then-delete race (with an empty `linked` list). Hard delete, not soft — a cascade would silently destroy refund records, and a soft delete costs a filter in every read path forever.
-  - **6 new hooks** + a new `ApiError` class in `use-finance-data.ts`, because a plain `Error` loses the status code and the 409's `linked` payload that the UI has to render. Disbursement mutations invalidate **both** query keys: a refund's amount feeds `actual_price` through `mergeReceipts`, so changing one silently moves every net-paid figure in the app. No optimistic updates, by design.
-  - **`src/components/category-select.tsx`** — the 12-option picker + "Other" escape hatch, factored out of `quick-add-modal.tsx` and now used by both it and the editor. One behaviour is new: a row whose category isn't on the list (categories are free text, not an enum) opens straight into the text input carrying its real value, instead of rendering as "nothing selected" and getting overwritten on the next save.
-  - **`src/components/receipt-editor.tsx`** — Dialog on desktop / Drawer on mobile, store autocomplete, `CategorySelect`, two-step delete with the 409 `linked` list rendered inline. Not mounted anywhere yet; Phase 1's store modal and Phase 2's manage table are its callers.
-
-- **`FEATURES.md` Phase 1 — the Stores page, plus the Entities tab (this session).** First user-visible output of the write path. `/stores`, two tabs, no new read endpoint — the whole page is a client-side aggregation over data `useMergedReceipts` / `useDisbursements` already hold.
-  - **`src/lib/name-groups.ts`** — the field-agnostic half, per §4.7: `nameGroupKey` (tier 1, automatic — trim/case/whitespace only), `nameSimilarityKey` (tier 2, suggestion-only), `levenshtein`, `duplicateCandidates`, `candidateKeySet`, plus `rankSpellings` / `tallySpelling` so "most frequent spelling, ties toward most recent" has one implementation rather than two. `src/lib/stores.ts` and `src/lib/entities.ts` are both aggregates on top of it — two row models, one similarity implementation.
-    - **The combining-marks class is built with `String.fromCharCode(0x0300)`–`(0x036f)`, not written as a regex literal.** FEATURES.md warns not to paste the literal marks into source; that warning is real and I tripped over it while writing the file. The marks are zero-width and render *on top of* the preceding character, so a literal class looks like `/[-]/` in an editor and a stray one silently changes what it matches. Constructing it from code points is the only version that stays readable.
-    - Empty similarity keys (a name of only punctuation) are dropped before pairing — an empty key is "equal" to every other empty key and "contained" in everything, so it would otherwise pair with the entire table.
-  - **`src/app/stores/page.tsx`** — header strip of three clickable filter cards (stores / inconsistent / possible duplicates), duplicate-name callout, search, and the store table with the category-mix bar. **Deliberately no `FilterBar`:** every other page is a lens over a date range, this one is a lens over the whole ledger, and a 30-day default would hide exactly the two-year-old mis-filed receipt you came here for.
-  - **`src/components/store-detail-modal.tsx`** — bulk bar (recategorize with an all/only-the-N-off-category scope toggle, rename, merge-into) over one `PATCH /api/receipts/bulk`, plus the receipt list, each row opening Phase 0's `ReceiptEditor`. Rename and merge close the modal on success because the group's key changes underneath them and there is nothing left to show; recategorize stays open so you can watch the mix bar go solid.
-  - **`src/components/entity-detail-modal.tsx`** — the same minus the category axis. **Its disbursement rows are read-only in Phase 1**, by design: the row-click equivalent needs a `DisbursementEditor`, which FEATURES.md §5.1 assigns to Phase 2. The `PATCH`/`DELETE` routes and hooks it will use already exist from Phase 0 and stay unused until then; until it lands, per-row disbursement fixes go through the Disbursements page. Bulk rename/merge on this tab is fully live — that was the point of the amendment.
-  - **`src/components/store-merge-dialog.tsx`** exports `NameMergeDialog`, generic over field (the filename is the one §4.8's checklist names). Both sides' ids are rewritten, not just the loser's — a group can hold several raw spellings, and a merge is the natural moment to normalize all of them rather than leaving the winner's own variants behind.
-  - **`src/components/confirm-button.tsx`** (not on the checklist, shared by both modals) — two-click arm/confirm with the affected count in the confirm label. `armed` is one value owned by the parent, so arming one action disarms the others and parents clear it whenever an action's inputs change; a confirmation can never apply to something other than what its label said.
-  - **`src/components/category-mix-bar.tsx`** — takes the `useCategoryColors` map rather than deriving one, per `CLAUDE.md`'s single-source rule. Segments are `flex: n 0 0%`, not percentage widths, so rounding can't leave a sliver of track showing between them.
-  - **Nav split (§7.1)** — analysis links stay inline, a "Manage ▾" `Popover` holds the data-management ones and highlights when a child route is active. It currently contains **only** Stores; Phase 2's `/manage` and Phase 3's `/subscriptions` join it when those routes exist, rather than sitting in the menu as 404s.
-  - **Quick-add category autofill (§4.6)** — picking a known store fills an empty, untouched category with that store's `dominantCategory` and says so ("Filled from history — Loblaws is usually Groceries"); a known store whose category differs gets a passive nudge instead. Derived from receipts, **no store→category defaults table** (§0). Store suggestions are now the group *display names* rather than every raw spelling, so accepting one can only reduce drift.
-    - **One deliberate deviation from §4.6, flagged for your call:** it says to replace the store field's `<input list=…>` datalist with the `Command`/`Popover` combobox. That premise is stale — the datalist was already replaced with `AutocompleteInput` in the bulk-add session, precisely because Chrome's datalist popup was unreliable to click. `AutocompleteInput` is also the better control for a *free-text* field (type-first, no popover to open), where the combobox suits the refund picker because that one must select an existing row. So the autofill behaviour §4.6 actually asks for is built on the existing control. Say the word if you'd rather have the combobox anyway.
-  - **Verified by you** — ran it, works. `/stores` is live.
-
-- **`FEATURES.md` Phase 2 — the `/manage` CRUD tables (this session).** Thin by design: Phase 0 built the write path, Phase 1 built the editors' first caller, and this is mostly turning two flags on.
-  - **`ReceiptsTable` gained `editable` / `selectable`, extended not forked** (§5). All three existing callers (`/`, `/daily`, `/manage`'s sibling `/monthly`) pass neither and render exactly as before. `editable` adds the per-row edit button, the "last edited" column and the subscription badge; `selectable` adds the checkbox column and the action bar. `colSpan` on the empty-state row is computed from the flags, so it can't drift.
-  - **`src/components/disbursements-table.tsx`** — the same shape over disbursements, with the entity / type / reason filters ported from the Disbursements page. §5 is right that this tab matters as much as the receipts one: a wrong refund amount silently corrupts `actual_price` everywhere, and until now nothing could fix one.
-  - **`src/components/disbursement-editor.tsx`** — mirrors `receipt-editor.tsx`. Two real differences: **delete needs no guard** (nothing references a disbursement, so there's no FK to trip and no 409 to render), and **editing is the more dangerous of the two**, because `amount` and `refunded_from_receipt` feed `actual_price`. The form says that out loud on refund rows instead of leaving you to find out.
-  - **`src/components/selection-action-bar.tsx`** — the shared bar plus `BulkFieldDialog`. That control is a **Dialog, not a Popover**, and the reason is load-bearing: it holds a Radix `Select` (`CategorySelect`) and `AutocompleteInput`, and a Select portals its content outside the trigger's DOM subtree — inside a Popover that can read as a pointer-down *outside*, dismissing the Popover as you pick. Dialog-wrapping-Select is the combination `quick-add-modal.tsx` already proves out here.
-  - **`src/lib/bulk-delete.ts`** — **there is deliberately no bulk-delete endpoint.** The 409 delete guard (D5) is per-row by nature; a set-based delete would either fail a whole batch over one linked receipt or silently skip it. So "Delete N" loops the single-row endpoint **sequentially** (not `Promise.all` — a hundred concurrent DELETEs against a personal Supabase project is a self-inflicted rate limit) and reports what survived. **Failures stay selected afterwards**, so the bar goes on describing exactly what's left to deal with rather than clearing and hiding it.
-  - **Selection is by id and survives a filter change** — select a few, refine the filter, select a few more, act on all of them. The header checkbox therefore toggles only the *currently filtered* rows, matching the search-aware "Select all" decision already made for `MultiSelect`. Both tables print "Showing N of M … · K selected" so a narrow filter never reads as an empty ledger.
-  - **`AutocompleteInput` now also supports a controlled `value`/`onChange`.** The bulk "Set store"/"Set entity" fields are plain `useState`, not react-hook-form, and without `value` a pick would update the caller's state while the input's own DOM value sat unchanged — nothing else was driving it. Existing callers spread `register(...)`, which contains no `value`, so they are untouched.
-  - **`/manage` has no `FilterBar`**, same reasoning as `/stores`: the row you came to fix is as likely to be two years old as two days.
-  - Nav's "Manage ▾" popover now holds Stores and Receipts & disbursements. Subscriptions joins them in Phase 3.
-
-  - **Sticky edit column (you asked for this).** The per-row edit button is now pinned to the right edge of the horizontal scroll container in all three editable tables (`receipts-table`, `disbursements-table`, the store modal's receipt list) rather than needing to be scrolled to. Each row carries a named `group/row` class so the pinned cell can mirror the row's own hover / selected background — a sticky cell must set a solid background or the columns scroll through it, and without the group it would punch an unshaded hole through every highlight.
-
-- **`FEATURES.md` Phase 3 — subscriptions (this session).** The largest phase, and the only one with a new security boundary.
-  - **`003_subscriptions.sql`** — the table, `receipts.subscription_id`, and the load-bearing part: `unique (subscription_id, date) where subscription_id is not null`. **You still have to run it**, then regenerate `src/types/database.ts`.
-  - **Recurrence is derived, never accumulated** (`src/lib/subscriptions.ts`). `nthChargeDate` computes the *nth occurrence from `start_date`*, so a 31st-of-the-month subscription clamps to Feb 28 and then returns to Mar 31. Repeatedly adding a month instead would have drifted it to the 28th permanently the first time it passed February — the clamp is what makes that structurally impossible rather than merely avoided. `nextChargeDate` is a pure function of `start_date` + interval + `charges_generated`, so there is nothing for it to desync from.
-  - **The runner catches up; it never asks "is today the day"** (`src/lib/subscriptions-runner.ts`). A skipped day self-heals, a double run is a no-op, a failed insert retries tomorrow, and a first run and a backfill are the same code path. Three ordering rules inside it are load-bearing:
-    1. Charges process oldest-first.
-    2. **A `23505` unique violation is success-already-recorded, not a failure.** It means the receipt is on the ledger and only the counter fell behind — the crash window between the insert and the counter advance. This is the single most important behaviour in the phase and the one most likely to be "fixed" into a bug by someone who doesn't see why it's there; it's commented at both the throw site (`errors.ts`) and the catch site.
-    3. A genuine failure **stops that subscription's loop**, and the counter advances only past the consecutive successes — otherwise the failed charge would be stranded and the ones after it skipped over.
-  - **New env-var-shaped security boundary.** `GET /api/cron/subscriptions` is the one handler that cannot call `requireOwnerForApi()` — a cron invocation has no session. It gates on a timing-safe `CRON_SECRET` bearer instead and **503s when the secret is unset** (off, not open). `CLAUDE.md`'s hard rules now name it as the single explicit exception.
-    - **This also required the first `/api` entry in the proxy's `PUBLIC_PATHS`**, which FEATURES.md doesn't mention and which would otherwise have been a silent no-op bug: the deny-by-default proxy 401s any API request without a session, so the cron would have been rejected before the handler ever ran and the schedule would simply never have fired — with nothing in the logs pointing at the cause. The exemption is exactly as wide as that one handler; anything else added under `/api/cron` inherits it and must bring its own gate.
-  - **The manual trigger is a separate owner-gated route** (`POST /api/subscriptions/run-due`), not the cron endpoint with a header attached, because the browser must never see `CRON_SECRET`. Both are thin wrappers over the same `runDueSubscriptionCharges()`, which is what lets the whole scheduled path be exercised locally before the app is ever deployed (§7.5).
-  - **`SubscriptionRunResult` lives in `subscriptions.ts`, not the runner.** The runner is `server-only` and the "Run due charges" button needs the shape to render its toast. A type-only import would erase in practice, but keeping it in the pure module means the client has no edge into server code at all.
-  - **Email never affects the ledger** (`src/lib/email.ts`). Receipts are written first, the send is wrapped and swallowed into a log line, and unset Resend vars just skip it. It only sends when something *happened* — a daily "0 charges" mail trains you to ignore the one that matters, and `skipped` alone doesn't count because a skip is the system working.
-  - **The create form projects the backfill before you save.** `dueChargesFor()` runs live in the form and states "this will create 7 receipts totalling $111.93 on the next run". Silent backfill of a mistyped `start_date` is the worst failure mode this feature has; the per-run cap of 60 bounds the damage and the form warns when a projection hits it.
-  - **`Overdue` is the real safety net**, not the email. A subscription still showing overdue a day later means the cron isn't running — visible in the UI you actually look at.
-  - **`SqliteDataSource` throws on every subscription method** (D8) rather than returning `[]`. An empty list would make the page look empty rather than unavailable, and a "run due charges" that quietly no-ops is worse than one that refuses.
-  - **The `Sub` badge from Phase 2 now has data behind it** — `subscription_id` joined `RECEIPT_COLUMNS` with this migration. It still links nowhere; §6.9's "view generated receipts" filter into `/manage` is noted below as a follow-up rather than built, since `/manage` has no URL-driven filter state today.
-  - `pnpm add resend` (6.18.0). New env vars: `APP_TIMEZONE`, `CRON_SECRET`, `RESEND_API_KEY`, `SUBSCRIPTION_EMAIL_TO`, `SUBSCRIPTION_EMAIL_FROM` — all documented in `.env.example`. `vercel.json` committed with the single Hobby-plan cron slot at `0 12 * * *`.
-
-### Mobile pass (2026-07-28) — quick-add drawer and shared primitives
-
-Reported: on a phone, tapping into a quick-add field zoomed the page and never
-zoomed back; scrolling down either re-focused a field or dragged the whole sheet
-away. Two independent root causes, both in shared primitives rather than in
-quick-add itself:
-
-- **iOS Safari force-zooms any focused text field under 16px** and does not undo
-  it on blur — the whole "it looks weird after I tap, and still weird after I tap
-  out" report. Every control here was `text-sm` (14px). Fixed once, globally, in
-  `src/app/globals.css`: an **unlayered** `@media (pointer: coarse)` block that
-  sets form controls to 16px. Unlayered because Tailwind v4 puts utilities in
-  `@layer utilities`, and unlayered rules outrank every layer — so it beats
-  `text-sm` without `!important` and without touching the desktop design.
-  Deliberately *not* fixed with `maximum-scale=1`, which would take pinch-zoom
-  away from everyone; `src/app/layout.tsx` now has an explicit `viewport` export
-  that keeps `maximumScale: 5` and adds `viewportFit: "cover"`.
-- **The drawer had no scroll container**, which is the whole "it drags the sheet
-  out instead of scrolling" problem. vaul's `shouldDrag` walks up the DOM for an
-  ancestor with `scrollHeight > clientHeight`; finding none scrolled, it reaches
-  the `role="dialog"` element and returns *drag*. New **`DrawerBody`** (in
-  `src/components/ui/drawer.tsx`) gives it one to find. Two details are
-  load-bearing and easy to drop: **`min-h-0`** (a flex item's default
-  `min-height: auto` refuses to shrink below its content, so `flex-1
-  overflow-y-auto` alone silently never scrolls) and `overscroll-contain` (stops
-  the scroll chaining into the page behind the overlay). All six drawer callers
-  now use it — three of them already had a bare `overflow-y-auto` div that, for
-  the `min-h-0` reason, had never actually scrolled.
-
-Also in the pass: `svh` instead of `vh` for sheet/dialog heights (mobile Safari
-measures `vh` against the chrome-retracted viewport, so 85vh is taller than the
-screen); `DialogContent` inset from the screen edges and height-capped, which
-gives the two editors a scroll on mobile they didn't have; 44px touch targets via
-`max-sm:` on input/select/tabs/checkbox/command rows; `inputMode="decimal"` on
-every money field; safe-area padding under the quick-add button and the drawer;
-and the autocomplete list capped at `45svh` with a `scrollIntoView` on open, since
-it is absolutely positioned and now sits inside a clipping scroll container.
-
-Not done *in that pass*: no nav or per-page layout work. Both are covered by the
-audit below.
-
-### Mobile audit (2026-07-28) — hamburger nav + layout sweep at 390px
-
-Targeted at an iPhone 13 (390×844), with the brief being "nothing pushed out of
-its box, cut off, or on one line when it should have wrapped".
-
-**Nav is a drawer below `lg`** (`src/components/nav.tsx`). The inline row was
-`overflow-x-auto`, so on a phone most of the app was behind a sideways swipe
-nothing signposted. `lg`, not `sm`, because the row is genuinely ~900px wide
-once the wordmark and the right-hand icons are counted — `sm` and `md` would
-both have kept a scrolling row, just a less obvious one. Sign-out moves into the
-drawer at those widths rather than becoming a third icon in a 390px bar.
-
-**The recurring bug behind most of "pushed out of its box" was `min-width:
-auto`.** A grid track's automatic minimum is its content's min-content width,
-and for an unbreakable string like `$123,456.78` that's the whole number — so a
-`grid-cols-2` stat row doesn't overflow the *card*, it widens the *column* and
-scrolls the entire page sideways. Same rule defeats `truncate` inside a flex
-row: the nowrap span reports its full width as its minimum and pushes past its
-container instead of ellipsing. `min-w-0` is now on every stat tile
-(`StatCard`, and the local ones on `/subscriptions` and in the two detail
-modals) and on every truncating flex child (multi-select summary and options,
-autocomplete rows, category-mix legend, the receipt combobox, duplicate-callout
-names). Worth knowing on sight — it looks like an overflow bug and is a sizing
-bug.
-
-**`input[type="date"]` was the sideways scroll in the quick-add sheet.** Mobile
-Safari gives it an intrinsic width from the native control and won't shrink
-below it, `width: 100%` notwithstanding, so it asserted a width its grid column
-couldn't honour. Fixed globally in `globals.css` with `appearance: none` +
-`min-width: 0` (the tap-to-open picker is the input *type*, not the appearance,
-so it's unaffected). Belt and braces, the paired field rows in all four editors
-are now `grid-cols-1 sm:grid-cols-2` — and because the Drawer only renders below
-640px and the Dialog only at or above it, that single breakpoint means "stacked
-in the sheet, side by side in the dialog" exactly.
-
-**Filter rows collapse on mobile** — new `src/components/filter-shell.tsx`, used
-by `FilterBar` and the two variant bars on `/monthly` and `/disbursements`. Six
-controls wrapping at 390px put ~300px of filters between the page title and the
-first number, so every page opened onto filters and no data. Collapsed it's one
-44px bar with a count of what's actually narrowing the view (not the date range,
-which is always set, and not "Net paid", which is a display toggle — either
-would show a badge that means nothing). Expanded, mobile stacks in one column
-instead of re-wrapping; controls opt in with `max-sm:w-full`, since the widths
-belong to the controls.
-
-Rest of the sweep: `TabsList` moved from `h-9` to `min-h-9` — `/monthly` passes
-`h-auto flex-wrap` for its month tabs, and the fixed height added in the earlier
-pass would have clipped every row after the first; the heatmap grid got
-`min-w-max` so its overflowing columns actually live inside the scroll container
-(they were rendering outside it) and a narrower label column; Recharts legends
-share a capped, scrollable `wrapperStyle` (`charts/legend-style.ts`) because
-Recharts subtracts the measured legend height from the plot, and a
-twelve-category legend is one row on a desktop and five on a phone; the stores
-page's three filter tiles go two-up-one-wide; `main` gets bottom padding clear
-of the quick-add button; and `body` gets left/right safe-area insets, which
-`viewportFit: "cover"` made necessary in landscape.
-
-Not done: the wide tables on `/manage` and `/disbursements` still scroll
-sideways inside their own container. That's the intended behaviour for a
-many-column table and a card-per-row mobile view would be a different component,
-not a tweak — worth doing if the tables turn out to be something you actually
-use on a phone.
-
-- **[`REPORTS.md`](REPORTS.md) — spending reports (this session).** A Saturday email over the past week, plus on-demand week/month/year reviews at `/reports`. **No migration, no schema change, no new table or column** — a report is a lens (`FEATURES.md` §0), so it writes nothing and stores nothing.
-  - **One window rule, three sizes** (`src/lib/reports.ts`): the N days ending yesterday, N = 7/30/365. Run on a Saturday the weekly window *is* last Sat→Fri — not because Saturday is special-cased, but because that's what "the 7 days ending yesterday" means on a Saturday. **The builder never learns what day of the week it is**; only `maybeSendWeeklyReport` in the cron does. That's what lets the identical code path serve the on-demand button on a Tuesday, and what makes the weekly email testable without waiting for one.
-  - **Ending yesterday, not today** — today is still being spent, and a report that silently includes a partial day always reads low with no way for the reader to know by how much.
-  - **Baseline windows that predate the ledger are dropped, not counted as zero.** Averaging in a window that is empty because the app didn't exist yet manufactures an increase out of the app's own age. `usableBaselines` is what the label counts, so a report with two of four windows usable says "vs 2-week avg" rather than quietly dividing by four.
-  - **`changeVsBaseline` is `null`, never `Infinity` or `NaN`.** A first-ever week against four empty windows is the *normal* first run of this feature, not an exotic input, and every renderer prints "no baseline" for it — deliberately not `0%`, which reads as "unchanged", a claim nobody made.
-  - **Travel / School / Rent** (`COMPARISON_EXCLUDED_CATEGORIES` in `config.ts`) are held out of the headline, the category table and both sides of every comparison, then reported in their own strip with an all-in total. Matching goes through `nameGroupKey` — the app's existing "same name" rule — so `"Rent"`/`" rent"` match and there is no second normaliser to keep in sync. It's **policy, not data**: changing the list changes past reports on re-render, which is correct, because the email is a photograph and the ledger is the subject.
-  - **Spend is always net (`actual_price`); "Received" counts only disbursements with no `refunded_from_receipt`.** A refund has already reduced the spend figure, so counting it again as income would report the same dollar twice — once as a reduction and once as money in.
-  - **The email is hand-built inline-styled HTML in `src/lib/email/`** (`layout.ts` shell + `spending-report.ts`), because Gmail's mobile app strips `<head>` styles for accounts it doesn't host. That one fact forces the rest: tables not flexbox, no media queries (fluid single column capped at 600px instead), no external fonts or images, bars as two-cell tables, `color` and `background-color` always set together so Gmail's dark-mode inversion can't produce white-on-white, a hidden preheader, and a plain-text alternative. `src/lib/email.ts` is now a shim — **delete it**, see below.
-  - **⚠️ The trap, and it bit while building this.** `buildCategoryColorMap` assigns from the palette by *alphabetical index over the set it is handed*, and the app's pages hand it every category in the ledger. So both the email (`reports-runner.ts`) and `/reports` build the map over **all** receipts, never the report window's categories — otherwise Groceries is turquoise in the email and blue on `/monthly`, with nothing to catch it. `ReportCategoryTable` therefore takes `colorMap` as a prop rather than calling `useCategoryColors` itself, matching `CategoryMixBar`'s existing design.
-  - **The page fetches the model instead of aggregating its own caches**, which `/stores` and `/manage` do and which would have been free here. The reason is "today": `APP_TIMEZONE` is server-only, so a browser-built report would use the browser's zone and could show a different week than the one that got mailed. `GET /api/reports` makes the server the only thing that decides what today means, and makes the preview provably the same object the email renders.
-  - **`POST /api/reports/send` takes only `{ period }`** and rebuilds server-side. The shallow reason is payload size; the real one is that numbers in an email you'll act on shouldn't have come from a browser, with nothing in the email able to say they did.
-  - **It folds into the existing subscriptions cron**, exactly as `FEATURES.md` §6.6 predicted a second scheduled job would have to on Hobby's single slot. No `vercel.json` change, **no new `PUBLIC_PATHS` entry**, and no third auth gate — the app still has two gates and one exception. Charges run *before* the report, because charges write and the report reads: a backfilled charge dated inside the window has to be on the ledger before the report counts it.
-  - **Sends every Saturday, including a zero-spend week — and never catches up.** Both are deliberate inversions of the subscription email's rules. It always sends because a report that only arrives when something happened is indistinguishable from a broken cron, and nothing else in the app would tell you the weekly email stopped. It never catches up because catching up needs to remember when the last one went out, which means persisted state, which would make a lens into a generator. A missed Saturday costs one click on `/reports`.
-  - Nav: **Reports is inline, not in "Manage ▾"** — it's analysis, not data management. That takes the inline row to 7; it already scrolls, but that's the one to watch if an eighth appears. Both the desktop row and the mobile drawer map `NAV_LINKS`, so it landed in both.
-  - One new env var, optional: `REPORT_EMAIL_TO`, falling back to `SUBSCRIPTION_EMAIL_TO`. Nothing new has to be set in Vercel for this to work.
-
-## In progress
-
-- **Nothing — Phases 0–3 of [`FEATURES.md`](FEATURES.md) are built.** What's left is your verification pass and the deploy (see the backlog below), which is the point at which the *scheduled* path can be tested at all.
-
-## Needs your attention (spending reports)
-
-**Built, reviewed and shipped.** No migration, no schema change, nothing to run
-in Supabase.
-
-~~Delete the `src/lib/email.ts` shim.~~ **Done** — `@/lib/email` now resolves to
-the directory, one barrel instead of two.
-
-~~Typecheck, lint, the three periods, the 400 on a bad period, the 401/403 when
-signed out, the Gmail render on mobile and desktop in both themes, and the
-category-colour match against `/monthly`.~~ **All checked, all fine.**
-
-**One item still open:** the app is deployed, so the cron is live — but read one
-firing's run JSON in the Vercel function logs. On a non-Saturday it should carry
-`weeklyReport: { sent: false, subject: null, reason: "not-saturday" }`. That
-line is how you confirm the check runs at all; without it a broken Saturday is
-invisible until you notice an email that never came. Then confirm the first real
-Saturday send.
-
-**Known cosmetic quirk, not a bug:** Gmail's message-list column shows the bare
-`finances@kylehagerman.dev` rather than "Finance Tracker", even though the
-opened message shows the name correctly once the address is in Contacts. The
-`From` header is right and the app has no say in it — Gmail resolves the list
-column against its own index of the sender. Nothing to fix here.
-
-## Needs your attention (Phase 0)
-
-1. **Run `supabase/migrations/002_mutable_rows.sql`** (SQL Editor → New query → paste → Run). Safe to re-run. Until it runs, every read fails: the select lists now ask for `updated_at`, and PostgREST 400s on a column that doesn't exist.
-2. **Regenerate `src/types/database.ts`** and take the output verbatim:
-   `npx supabase gen types typescript --project-id <ref> --schema public --schema finance_tracker`
-   I hand-added `updated_at` to the receipts and disbursements `Row`/`Insert`/`Update` blocks so the code typechecks before you run the generator — placed where the generator sorts it, but **replace the file with the real output** rather than trusting my edit. Keep the whole file including the other apps' `public` tables (see the note below on why deleting the `public` key collapses everything to `never`).
-3. **Run `pnpm typecheck` and `pnpm lint`** and report failures — none of this session's code has been compiled (I can't run build commands). The riskiest spots if something does fail: `zodResolver(updateReceiptSchema)`'s input/output generics in `receipt-editor.tsx`, and the `as const satisfies` column allowlists in `sqlite-source.ts`.
-4. ~~Nothing new is reachable in the UI yet. `ReceiptEditor` has no caller until Phase 1's store modal~~ — **done**, the store modal's receipt list is now its caller.
-
-## Needs your attention (Phase 1) — cleared
-
-~~Typecheck, lint, click through `/stores`.~~ **Done, works.** The nested-Dialog stack (`ReceiptEditor` over `StoreDetailModal`) and the `""`-controlled merge `Select`s both behaved.
-
-## Needs your attention (Phase 3)
-
-1. **Run `supabase/migrations/003_subscriptions.sql`**, then regenerate `src/types/database.ts`:
-   `npx supabase gen types typescript --project-id <ref> --schema public --schema finance_tracker`
-   I hand-added the `subscriptions` table and `receipts.subscription_id` to that file so the code typechecks before you run the generator — **replace it with the real output** rather than trusting my edit, and keep the whole file including the other apps' `public` tables.
-   **Until the migration runs, every receipt read 400s**: `RECEIPT_COLUMNS` now selects `subscription_id`, and PostgREST rejects a select naming a column that doesn't exist. This is the same trap as 002 — the app breaks on *reads*, not just on subscriptions.
-2. **Verify the core loop the way §6.11 specifies:** create a monthly subscription dated 3 months ago → the create form should warn it will write 3 receipts → "Run due charges" writes exactly 3 → run it again → writes 0. That second run is the important one; it exercises the 23505 replay rule.
-3. **Set the new env vars locally** (`.env.local`) before testing email: `RESEND_API_KEY`, `SUBSCRIPTION_EMAIL_TO=kyleaphagerman@gmail.com`, `SUBSCRIPTION_EMAIL_FROM=Finance Tracker <finances@kylehagerman.dev>`. Leaving them unset is fine — the run just skips the notification and logs a warning.
-4. ~~**The scheduled path cannot be tested until you deploy.**~~ **Deployed.** What remains is the one observation nobody can make on demand: wait for a firing and read the run JSON in the Vercel function logs. See the backlog section's note on what that JSON should say.
-5. ~~**`vercel.json` must be committed before the first deploy** or the cron simply won't exist.~~ **Done** — it's committed, and it still holds the single Hobby slot at `0 12 * * *`. That one entry now drives both subscription charges and the Saturday report; there is no second cron to add, and anything else that ever needs scheduling folds into the same handler.
-
-## Needs your attention (Phase 2)
-
-1. **Run `pnpm typecheck` and `pnpm lint`, then `pnpm dev` and exercise `/manage`** — none of Phase 2 has been compiled or run. Riskiest spots, in order:
-   - **`AutocompleteInput`'s prop type widened** (`value` no longer `Omit`ted). If anything broke, it broke at the three existing call sites — quick-add's store and entity fields, and `receipt-editor.tsx` — which should be unaffected because `register(...)` supplies no `value`.
-   - **`Checkbox` header state** uses Radix's `"indeterminate"` for a partial selection; this is the first place in the app that uses it.
-   - **`BulkFieldDialog` nests a Dialog inside nothing but the page**, so it should be simpler than Phase 1's nesting — but the Set-category dialog contains a Radix `Select`, which is the interaction the Popover version would have broken.
-2. **Test bulk delete on rows you don't mind losing** — pick two, delete, confirm the count. It is N sequential deletes with no transaction, so a mid-run failure leaves the earlier ones gone; that's why the failures stay selected and the toast reports both numbers. Then try deleting a receipt that has a refund pointing at it and confirm it reports as blocked rather than vanishing.
-3. **Watch the receipts table's size.** `/manage` renders every row that matches its filters, with no pagination — `FEATURES.md` §5 puts server-side pagination explicitly out of scope until the count makes it noticeable. If the Receipts tab feels sluggish on load, that's the trigger to revisit, not a bug.
-
-## Needs your attention (auth rework)
-
-- **Generated `src/types/database.ts` and wired it in** (you exported it). `<Database>` now flows through `src/lib/supabase/{server,service}.ts` and `SupabaseDataSource`'s constructor. **Keep the whole generated file, including the other apps' `public` tables** — the generator hardcodes `DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]`, so deleting the `public` key silently collapses `Tables`/`TablesInsert`/`TablesUpdate`/`Enums`/`CompositeTypes` to `never` with no error. It isn't an exposure either: TS types are erased at compile time, so `import type { Database }` reaches no bundle. Re-run `npx supabase gen types typescript --project-id <ref> --schema public --schema finance_tracker` after any schema change and take the output verbatim.
-
-- **`.env.local` now loads in the backfill script.** `tsx` doesn't read it the way `next dev` does, which is why the env vars came up missing; the script parses it itself now, splitting on the first `=` only so base64 secret keys survive, and never overwriting a var that's already set. The old docblock also showed bash's `VAR=value cmd` prefix, which silently does nothing in PowerShell — `$env:VAR = "..."` is the equivalent, and is now documented in the script and in the error message.
-- **Schema shape deviates from the guide on purpose.** The guide says "one `public` schema, prefix every table with the app name"; this app uses a dedicated `finance_tracker` schema (`migration.md` §6), which solves the same collision problem more cleanly. Consequence: `finance_tracker` must be in the project's **exposed schemas** API setting or every call 404s. Say the word if you'd rather move to prefixed `public` tables.
-- **`SUPABASE_SECRET_KEY` is now a live credential in the running app,** not just a one-off script input. Set it in Vercel for all three environments, and treat a leak as full data access — it bypasses RLS by design. It is reachable only through `src/lib/supabase/service.ts`, which is `server-only` so a client-component import fails the build rather than shipping the key.
-- **Run `supabase/migrations/finance_tracker_schema.sql`, not `migration.md` §6.** After running it, verify the lockout with the `curl` in §6 of that file — a permission-denied error is the pass condition; an empty array means privileges are open and only RLS is holding.
-
-## Backlog — your steps to bring this online
-
-These need your Supabase / GCP / Vercel account access, which Claude doesn't have. Steps 1–3 are the ones the auth guide calls out as easy to get wrong.
-
-**State as of 2026-07-28: this list is complete — the app is deployed.** Steps 3–7 were done during the `FEATURES.md` design work (schema live, SQLite backfill run), and step 9 has now happened with the env vars set in Vercel. Every superseded note about "the app is not on Vercel yet" below and in `FEATURES.md` §7.5 / `REPORTS.md` §10 should be read as historical.
-
-**What deploying unblocked, and what it did not.** Vercel crons only fire on production deployments, so until now *nothing* about the scheduled path had ever run on a trigger — for either subscriptions or the weekly report. That path is now live but **still unobserved**: the confirming evidence is a cron firing in the Vercel function logs, and it arrives on the schedule's own timetable rather than on demand. The two things to look at once, and then never again:
-
-- **Any day:** one firing's run JSON. It should carry the subscription result plus `weeklyReport: { sent: false, subject: null, reason: "not-saturday" }` on six days out of seven. That `reason` line exists specifically so a silent Saturday is diagnosable — without it you can't tell a working cron from a dead one.
-- **The first Saturday:** `weeklyReport.sent: true` and the email in your inbox.
-
-If either is missing, the cause is almost always `CRON_SECRET`: unset makes the endpoint 503 (fail closed, off rather than open), and a mismatch makes it 401. Both are visible in the same logs.
-
-1. **Supabase → Authentication → URL Configuration → Redirect URLs.** Add every origin this app finishes sign-in on:
-   `https://<this-app>.kylehagerman.dev/auth/callback`, `https://<this-app>.vercel.app/auth/callback`, `https://*-<vercel-scope>.vercel.app/auth/callback`, `http://localhost:3000/auth/callback`.
-   Miss one and Supabase silently falls back to the project-wide **Site URL**, which belongs to a *different* app — so sign-in "works" but lands you on the wrong domain. **Do not change the Site URL**, and do not add a second keep-alive cron (personal-website's covers the project).
-2. **Confirm Google is enabled** under Authentication → Providers. It's project-wide and should already be on from the first app — do *not* create a second GCP OAuth client for this app. If the GCP consent screen is still in *Testing*, publish it, or Google-issued refresh tokens expire every 7 days.
-3. Run `supabase/migrations/finance_tracker_schema.sql` (SQL Editor → New query → paste → Run), **not** the older SQL in `migration.md` §6 — see that section's note for why. Then add `finance_tracker` to the project's **exposed schemas** API setting (only `public` is exposed by default, and without this every request 404s).
-4. Copy `.env.example` → `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL` and **`SUPABASE_SECRET_KEY`** (the app itself needs this one now, not just the script). Leave `OWNER_USER_IDS` blank for now.
-5. `pnpm install`, `pnpm dev`, visit `/login`, sign in with Google. Because the allowlist is empty you'll land back on `/login` with your user id printed — that's the bootstrap path working, not a bug.
-6. Put that UUID in `OWNER_USER_IDS` and restart. You should now reach `/`.
-7. ~~Add `SQLITE_DB_PATH` to `.env.local`, then run `pnpm migrate:sqlite-to-supabase` (no env prefix, no user id needed) and run the two `setval(...)` statements it prints in the Supabase SQL editor.~~ **Done.**
-8. ~~Click through all 6 pages + quick-add.~~ **Done.**
-9. ~~Deploy to Vercel and mirror **every** env var into Production, Preview *and* Development — `.env.local` is local only, and auth working locally but 401ing on Vercel is almost always this. `DATA_SOURCE`/`SQLITE_DB_PATH` stay unset in production.~~ **Done.** Note the env list has grown since this step was written: `APP_TIMEZONE`, `CRON_SECRET`, `RESEND_API_KEY`, `SUBSCRIPTION_EMAIL_TO`, `SUBSCRIPTION_EMAIL_FROM` (`FEATURES.md` §7.2) and the optional `REPORT_EMAIL_TO` (`REPORTS.md` §7). Any future one has to be mirrored the same way.
-10. Verify in a private window that a protected route 302s to `/login`, and that sign-out clears the session.
-
-## Follow-ups
-
-- [x] ~~Edit/delete UI for existing rows — still out of scope~~ — **superseded.** Now scoped as Phase 0 + Phase 2 of [`FEATURES.md`](FEATURES.md); the read-only-except-quick-add design is being deliberately dropped.
-- [ ] Confirm the Daily page's per-category (not per-receipt) stacked-bar aggregation is acceptable — see `migration.md` §14a.
-- [ ] Confirm ISO-week bucketing (Mon-Sun) is fine for `/savings` and `/disbursements` weekly views — differs slightly from the old pandas `resample("W")` (Sunday-ending weeks). See `migration.md` §15.
-- [ ] Decide whether the quick-add "refund of receipt" combobox should stay unscoped (searches *all* receipts) once the dataset grows large.
-- [ ] **§6.9's "view generated receipts" link isn't built.** It would filter `/manage` by `subscription_id`, and `/manage`'s filters are local component state with no URL-driven entry point. Building it means giving that page a query-param filter — worth doing as one piece rather than a one-off. The `Sub` badge renders today but links nowhere.
-- [ ] **Server-side pagination on `/manage`.** Explicitly out of scope per `FEATURES.md` §5; the trigger to revisit is the Receipts tab feeling sluggish on load, not a row count.
-- [ ] **Appendix A — pre-announced subscription price changes.** Not built, by design. The trigger: you get a "your price increases on <date>" email and want to record it now without corrupting today's numbers. Until then, edit the subscription's `price` when it rises; past receipts keep the old amount because they are facts.
-- [x] ~~The disbursement quick-add's **Entity** field has the same free-text-consistency problem the Store field just got a datalist for~~ — **done**, it now uses the same `AutocompleteInput`, sourced from `/api/disbursements`.
-- [ ] TypeScript is pinned to latest-5.x (5.9.3) and ESLint to latest-9.x (9.39.5), not the newest majors (TS 7, ESLint 10) — see `migration.md`'s flagged decisions for why. Revisit once the ecosystem (`typescript-eslint`, `eslint-config-next`) catches up.
-- [ ] A post-build code review (8-angle, see session log) surfaced cleanup-tier items left un-fixed by design (correctness bugs were fixed; these are quality/consistency only):
-  - `src/app/monthly/page.tsx` reimplements the filter bar UI instead of extending `src/components/filter-bar.tsx` — `FilterBar` would need a way to swap its leading control (date range vs. month multiselect) to unify these.
-  - `src/lib/dates.ts` hand-rolls week/day math; `date-fns` is already a dependency but unused anywhere in `src/`. Consider switching if a date-math bug ever surfaces.
-  - Several small duplications: the bucket+category `Map`-accumulation pattern (daily/monthly pages), the `discount > 0 || discount_percentage > 0` predicate (also inlined in `lib/filters.ts`), the weekly/daily bucketing threshold logic (savings/disbursements pages), the refresh-button JSX, and the local table-filter-state pattern (`ReceiptsTable`, categories page, disbursements page) — none are bugs, just three-plus places to touch if the shared behavior changes.
-  - `src/store/filters-store.ts`'s SSR-hydration approach (`skipHydration` + `FiltersHydrator`) has no `hasHydrated` gate exposed to consumers, so pages briefly render default filters before snapping to the persisted ones on load — a visible flash, not a data-loss bug.
-  - `src/lib/data/source.ts`'s `getDataSource()` implicitly assumes it's called inside a Next.js request scope (needs `cookies()`); undocumented in the code itself, only in `CLAUDE.md`'s hard rules. `scripts/migrate-sqlite-to-supabase.ts` correctly bypasses it with its own client — worth a code comment if this bites someone later.
-
-## Notes / gotchas
-
-- `DATA_SOURCE=sqlite` mode requires `SQLITE_DB_PATH` and only works locally — `better-sqlite3`'s native binary isn't meant to run on Vercel.
-- Categories are still free-text (not a DB enum) — the quick-add dropdown offers the 12 `CATEGORY_OPTIONS` (ported from the old Gooey script) plus "Other" for anything else, matching the old DB's tolerance for arbitrary category strings.
-- Any inline chart styling must use the `--color-*` Tailwind-exposed CSS variables (e.g. `var(--color-border)`), not the raw HSL-component variables (`var(--border)`) that `globals.css` defines for `hsl()` wrapping — the raw ones aren't valid CSS colors on their own.
+- **Every new env var must be mirrored into Production, Preview *and*
+  Development** in Vercel. Auth working locally but 401ing on Vercel is almost
+  always this.
+- **After any schema change**, re-run
+  `npx supabase gen types typescript --project-id <ref> --schema public --schema finance_tracker`
+  and take the output verbatim (see the `database.ts` trap in
+  `ARCHITECTURE.md` §6).
+- **`finance_tracker` must stay in Supabase's exposed-schemas setting** or every
+  request 404s. Only `public` is exposed by default.
+- Don't add a second Supabase keep-alive cron — the personal-website project's
+  covers this one.
+- `DATA_SOURCE=sqlite` needs `SQLITE_DB_PATH` and works locally only;
+  `better-sqlite3`'s native binary isn't meant for Vercel.

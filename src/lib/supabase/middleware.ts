@@ -17,7 +17,7 @@ import { requireEnv } from "@/lib/env";
 // `src/app/api/cron/subscriptions/route.ts`, which fails closed when
 // `CRON_SECRET` is unset. This entry is exactly as wide as that one handler;
 // anything else added under /api/cron inherits the exemption and must bring its
-// own gate. See FEATURES.md §6.6 and §7.3.
+// own gate. See ARCHITECTURE.md and §7.3.
 const PUBLIC_PATHS = ["/login", "/auth/callback", "/api/cron"];
 
 function isPublicPath(pathname: string): boolean {

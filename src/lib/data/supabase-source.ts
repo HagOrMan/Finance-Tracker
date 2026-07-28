@@ -21,7 +21,7 @@ import {
 } from "./errors";
 import { mergeReceipts } from "./merge";
 
-// Dedicated schema (not `public`) — see migration.md §3 for rationale. Must
+// Dedicated schema (not `public`) — see ARCHITECTURE.md for rationale. Must
 // be added to Supabase's "exposed schemas" API setting or these calls 404.
 const SCHEMA = "finance_tracker";
 
@@ -425,7 +425,7 @@ export class SupabaseDataSource implements DataSource {
 
     if (error) {
       // Not a failure — `receipts_subscription_charge_uniq` says this exact
-      // charge is already on the ledger. See errors.ts and FEATURES.md §6.4.
+      // charge is already on the ledger. See errors.ts and ARCHITECTURE.md.
       if (isUniqueViolation(error)) {
         throw new UniqueViolationError(
           `Charge for subscription ${subscription.id} on ${date} already exists`,

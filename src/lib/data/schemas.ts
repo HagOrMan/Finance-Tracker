@@ -71,7 +71,7 @@ export const updateDisbursementSchema = z
   .refine((v) => Object.keys(v).length > 0, "No fields to update");
 
 // ---------------------------------------------------------------------------
-// Bulk update — id-list based, not filter-based (FEATURES.md D7).
+// Bulk update — id-list based, not filter-based (ARCHITECTURE.md).
 //
 // One endpoint per table covers recategorize, rename and merge, because all
 // three are "apply this patch to these rows". The client already holds every

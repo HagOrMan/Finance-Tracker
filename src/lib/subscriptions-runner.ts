@@ -5,7 +5,7 @@
  * `GET /api/cron/subscriptions` (gated on `CRON_SECRET`) and
  * `POST /api/subscriptions/run-due` (gated on `requireOwnerForApi`). Only the
  * trigger differs, which is what makes the scheduled path testable locally
- * before the app is ever deployed — see FEATURES.md §7.5.
+ * before the app is ever deployed — see ARCHITECTURE.md.
  *
  * `SubscriptionRunResult` deliberately lives in the pure `subscriptions.ts`
  * rather than here: this module is `server-only`, and the client needs the
@@ -36,7 +36,7 @@ function emptyResult(today: string): SubscriptionRunResult {
  * 1. Charges are processed oldest-first.
  * 2. A `23505` unique violation counts as **success-already-recorded**, not a
  *    failure — the receipt is on the ledger, only the counter fell behind
- *    (FEATURES.md §6.4). This is what repairs a crash between the insert and
+ *    (ARCHITECTURE.md). This is what repairs a crash between the insert and
  *    the counter advance, with no transaction anywhere.
  * 3. A genuine failure **stops that subscription's loop**. The counter is
  *    advanced only past the consecutive successes, so the failed charge is

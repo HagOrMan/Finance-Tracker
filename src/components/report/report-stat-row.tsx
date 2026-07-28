@@ -10,7 +10,7 @@ import {
 } from "@/lib/reports";
 
 /**
- * The three headline figures (REPORTS.md §2.3, §3.1).
+ * The three headline figures (ARCHITECTURE.md, §3.1).
  *
  * **Habitual spend is the big one**, and the percentage change sits directly
  * under it because the two describe the same scope — that's the only way the

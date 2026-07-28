@@ -55,7 +55,7 @@ import type { Disbursement } from "@/lib/data/types";
 import { buildEntityGroups } from "@/lib/entities";
 
 /**
- * The disbursement counterpart to `receipt-editor.tsx` (FEATURES.md §5.1). The
+ * The disbursement counterpart to `receipt-editor.tsx` (ARCHITECTURE.md). The
  * `PATCH`/`DELETE` routes and hooks it uses have existed since Phase 0 and were
  * unused until now.
  *

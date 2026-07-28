@@ -11,7 +11,7 @@ import {
 } from "@/lib/reports";
 
 /**
- * The baseline strip (REPORTS.md §3.1).
+ * The baseline strip (ARCHITECTURE.md).
  *
  * The bars exist so you can see whether the average is a fair baseline — a
  * headline "▲14% vs 4-week average" means something quite different when the

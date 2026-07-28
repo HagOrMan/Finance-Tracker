@@ -1,6 +1,6 @@
 /**
  * `src/lib/email.ts` became this directory when spending reports arrived
- * (REPORTS.md §4.1) — one file could not hold two templates plus the shared
+ * (ARCHITECTURE.md) — one file could not hold two templates plus the shared
  * Gmail-safe chrome without becoming the place nobody wants to open.
  *
  * This barrel exists so the split cost zero import changes: both subscription

@@ -7,7 +7,7 @@ import { bulkUpdateReceiptsSchema } from "@/lib/data/schemas";
 
 /**
  * `PATCH /api/receipts/bulk` — one endpoint behind recategorize, rename and
- * merge, because all three are "apply this patch to these ids" (FEATURES.md D7).
+ * merge, because all three are "apply this patch to these ids" (ARCHITECTURE.md).
  *
  * The static `bulk` segment wins over the sibling `[id]` route in Next's
  * matcher, so this is not ambiguous — but it does mean `bulk` is now a

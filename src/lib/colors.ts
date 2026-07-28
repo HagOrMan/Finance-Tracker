@@ -4,7 +4,7 @@
 // slots 1/2/5 substitute the brand's breeze/lush/nebula hues into the
 // reference 8-hue categorical anchor (same adjacency order the reference
 // validated, so substituting same-family hues keeps it passing — see
-// migration.md for the exact `validate_palette.js` runs). Slots 9-12 extend
+// ARCHITECTURE.md for the exact `validate_palette.js` runs). Slots 9-12 extend
 // past the 8 safe anchors as a white-mixed tint of slots 1-4; every chart
 // using this map also shows the category name in its legend/tooltip, so
 // identity is never carried by color alone even in that lower-safety tier.

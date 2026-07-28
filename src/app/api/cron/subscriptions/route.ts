@@ -16,11 +16,11 @@ export const maxDuration = 60;
 /**
  * The daily cron. **It does two things**, and the name undersells the second:
  *
- * 1. Writes every subscription charge that is due (FEATURES.md §6.3).
- * 2. On Saturdays, mails the weekly spending report (REPORTS.md §6.1).
+ * 1. Writes every subscription charge that is due (ARCHITECTURE.md).
+ * 2. On Saturdays, mails the weekly spending report (ARCHITECTURE.md).
  *
  * The report lives here rather than in its own `/api/cron/*` route because
- * Vercel Hobby allows exactly one cron, which FEATURES.md §6.6 already
+ * Vercel Hobby allows exactly one cron, which ARCHITECTURE.md already
  * anticipated: "anything else that ever needs scheduling has to be folded into
  * this same handler". Reusing this route also avoids a second `PUBLIC_PATHS`
  * entry — the deny-by-default proxy would 401 a new cron route before its
@@ -90,7 +90,7 @@ export async function GET(request: Request) {
 }
 
 /**
- * The Saturday send (REPORTS.md §6.3, §6.4).
+ * The Saturday send (ARCHITECTURE.md, §6.4).
  *
  * **Only this function knows about Saturday.** `buildSpendingReport` takes a
  * period and a date and has no opinion about the calendar, which is what lets

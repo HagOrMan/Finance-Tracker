@@ -7,7 +7,7 @@ import {
 } from "@/lib/name-groups";
 
 /**
- * The Entities aggregate — the Stores lens, one column over (FEATURES.md §4.7,
+ * The Entities aggregate — the Stores lens, one column over (ARCHITECTURE.md,
  * D11). `disbursements.entity` has exactly the free-text-drift problem
  * `receipts.store` has, and merging is the same operation on a different
  * column, so the grouping/similarity machinery is shared via `name-groups.ts`
@@ -106,7 +106,7 @@ export function buildEntityGroups(
 
 /**
  * Default sort for the Entities table: duplicate-name candidates first, then
- * `count` desc (FEATURES.md §4.7).
+ * `count` desc (ARCHITECTURE.md).
  *
  * Unlike stores there is no category-consistency signal to rank by, so
  * near-duplicate names *are* the finding — which is exactly what this tab was

@@ -25,9 +25,8 @@ export interface Receipt {
   date: string; // YYYY-MM-DD, always treated as a plain string — never parsed with `new Date()`
   /**
    * Null for hand-entered receipts; set for cron-generated subscription charges.
-   * The column itself doesn't exist until Phase 3's migration — until then both
-   * data sources hardcode `null`. It lives in the type from Phase 0 so the code
-   * that consumes receipts doesn't have to change shape twice.
+   * `SqliteDataSource` always reports `null` — the column arrives in a
+   * Postgres-only migration and that dev database has no such table.
    */
   subscription_id: number | null;
   /** Display-only ("last edited"). Never sent on a write — the DB trigger owns it. */
@@ -76,7 +75,7 @@ export interface NewDisbursementInput {
  * else. `id`, `created_at`, `updated_at` and `subscription_id` are absent by
  * construction, which is half of why a patch can never rewrite provenance.
  * The other half is that route handlers build the patch only from
- * `parsed.data` (zod strips unknown keys) — see FEATURES.md §3.3.
+ * `parsed.data` (zod strips unknown keys) — see ARCHITECTURE.md.
  */
 export type UpdateReceiptInput = Partial<
   Pick<
@@ -103,7 +102,7 @@ export type UpdateDisbursementInput = Partial<
 //
 // A subscription is a SCHEDULE, not a spend record. Nothing in the app's math
 // reads this type — the cron generates receipts from it, and the receipts are
-// what every chart, filter and total already understands. See FEATURES.md §0.
+// what every chart, filter and total already understands. See ARCHITECTURE.md.
 // ---------------------------------------------------------------------------
 
 export const INTERVAL_UNITS = ["day", "week", "month", "year"] as const;
@@ -176,7 +175,7 @@ export interface DataSource {
   /** Throws `NotFoundError` when no row has that id. */
   updateReceipt(id: number, patch: UpdateReceiptInput): Promise<Receipt>;
   /**
-   * Bulk patch by id list (FEATURES.md D7). Returns only the rows that existed
+   * Bulk patch by id list (ARCHITECTURE.md). Returns only the rows that existed
    * — a shorter array than `ids` means some ids didn't match, which is not an
    * error: the client's cached list can lag a delete.
    */
@@ -217,7 +216,7 @@ export interface DataSource {
    *
    * Throws `UniqueViolationError` when a charge for that (subscription, date)
    * already exists. The caller **must** treat that as success-already-recorded
-   * rather than a failure — see FEATURES.md §6.4. It is the mechanism that
+   * rather than a failure — see ARCHITECTURE.md. It is the mechanism that
    * makes the runner self-repairing without transactions.
    */
   insertSubscriptionCharge(

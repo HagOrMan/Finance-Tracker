@@ -167,7 +167,7 @@ grant usage, select, update on all sequences in schema finance_tracker to servic
 alter table finance_tracker.receipts      enable row level security;
 alter table finance_tracker.disbursements enable row level security;
 
--- Drops the per-user policies from the earlier `migration.md` §6 SQL, if you
+-- Drops the per-user policies from the earlier `ARCHITECTURE.md` SQL, if you
 -- ever ran it. Under Pattern A they are dead code.
 drop policy if exists "owner full access" on finance_tracker.receipts;
 drop policy if exists "owner full access" on finance_tracker.disbursements;
@@ -185,7 +185,7 @@ drop policy if exists "owner full access" on finance_tracker.disbursements;
 -- an empty array would mean privileges are open and only RLS is holding, which
 -- is one mistake away from exposure.
 --
--- The edit/delete UI exists (FEATURES.md Phase 0), so the app issues UPDATE and
+-- The edit/delete UI exists (ARCHITECTURE.md Phase 0), so the app issues UPDATE and
 -- DELETE. Privileges and policies are separate gates; under Pattern A only the
 -- grant is needed, and it is live below — not a suggestion. 002_mutable_rows.sql
 -- restates it idempotently alongside the updated_at triggers that depend on it.

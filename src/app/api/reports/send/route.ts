@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * The "Send to email" button (REPORTS.md §4.3).
+ * The "Send to email" button (ARCHITECTURE.md).
  *
  * **Takes only `{ period }` — never a report body.** It rebuilds the model
  * server-side from the database. The shallow reason is payload size; the real

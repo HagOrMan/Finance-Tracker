@@ -95,7 +95,7 @@ function buildIdList(ids: number[]): {
 }
 
 // Local-dev-only adapter (DATA_SOURCE=sqlite). Never selected in production
-// — see migration.md §8. Opens a short-lived connection per call rather
+// — see ARCHITECTURE.md. Opens a short-lived connection per call rather
 // than holding one open, since this only ever runs against `next dev`.
 export class SqliteDataSource implements DataSource {
   private readonly dbPath: string;

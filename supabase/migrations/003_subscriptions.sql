@@ -2,7 +2,7 @@
 -- 003_subscriptions.sql — recurring charges that GENERATE receipts.
 -- Safe to re-run. Run AFTER 002_mutable_rows.sql.
 --
--- FEATURES.md §0: `receipts` is the ledger of facts. A subscription is a
+-- ARCHITECTURE.md: `receipts` is the ledger of facts. A subscription is a
 -- SCHEDULE, not a spend record — nothing in the app's math ever reads this
 -- table. That is why adding it required zero changes to any chart, filter,
 -- total or page: the new spending simply appears as receipts, which everything
@@ -39,7 +39,7 @@ alter table finance_tracker.receipts
 -- behind, so the next run recomputes the same due date and this index rejects
 -- the re-insert with 23505 — which the runner treats as
 -- success-already-recorded. That one rule is what makes the whole design
--- self-repairing without transactions (FEATURES.md §6.4).
+-- self-repairing without transactions (ARCHITECTURE.md).
 create unique index if not exists receipts_subscription_charge_uniq
     on finance_tracker.receipts (subscription_id, date)
     where subscription_id is not null;

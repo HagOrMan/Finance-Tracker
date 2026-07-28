@@ -1,6 +1,6 @@
 // All functions here take/return plain "YYYY-MM-DD" strings and do date
 // math in UTC (via the explicit T00:00:00Z anchor) specifically to avoid
-// local-timezone `Date` parsing shifting the day — see migration.md's note
+// local-timezone `Date` parsing shifting the day — see ARCHITECTURE.md's note
 // on dates-as-strings.
 
 export function isoWeekStart(dateISO: string): string {
@@ -30,7 +30,7 @@ export function addDaysISO(dateISO: string, days: number): string {
  * parse of "YYYY-MM-DD" shifts the day west of Greenwich, which would put the
  * weekly report on the wrong weekday for exactly the timezones this app runs in.
  *
- * The only caller is the cron's Saturday check (REPORTS.md §6.3). The report
+ * The only caller is the cron's Saturday check (ARCHITECTURE.md). The report
  * builder itself never learns what day of the week it is, which is what lets
  * the identical code path serve the on-demand button on a Tuesday.
  */

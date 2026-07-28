@@ -19,7 +19,7 @@ import type { DuplicateReason } from "@/lib/name-groups";
 /**
  * One side of a proposed merge, reduced to the four things the dialog needs.
  * `StoreGroup` and `EntityGroup` both narrow to this, which is what lets one
- * dialog serve both tabs (FEATURES.md §4.7 — "generic over field").
+ * dialog serve both tabs (ARCHITECTURE.md — "generic over field").
  */
 export interface MergeSide {
   key: string;

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * The report the `/reports` page renders — and the same object the email
- * template is handed (REPORTS.md §4.4).
+ * template is handed (ARCHITECTURE.md).
  *
  * The page already holds every receipt in its TanStack Query cache and could
  * aggregate this client-side for free, the way `/stores` does. It fetches

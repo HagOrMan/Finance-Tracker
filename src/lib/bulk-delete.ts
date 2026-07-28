@@ -3,7 +3,7 @@
  *
  * There is deliberately **no bulk delete endpoint.** Phase 0 built
  * `DELETE /api/receipts/[id]` with a per-row guard that returns 409 plus the
- * disbursements blocking it (FEATURES.md D5), and that guard is per-row by
+ * disbursements blocking it (ARCHITECTURE.md), and that guard is per-row by
  * nature — a set-based delete would either fail the whole batch on one linked
  * receipt or silently skip it. Looping the single-row endpoint keeps the guard
  * meaningful and lets the caller report exactly which rows survived.

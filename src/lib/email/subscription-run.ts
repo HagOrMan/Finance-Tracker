@@ -1,8 +1,8 @@
 /**
- * Subscription-run notifications (FEATURES.md §6.8).
+ * Subscription-run notifications (ARCHITECTURE.md).
  *
  * Moved here from `src/lib/email.ts` when reports arrived and the module became
- * a directory (REPORTS.md §4.1). The content and wording are unchanged; what is
+ * a directory (ARCHITECTURE.md). The content and wording are unchanged; what is
  * new is that it now renders inside the shared `emailShell`, so both email types
  * get the same Gmail-safe chrome instead of this one shipping a bare fragment.
  *
@@ -30,7 +30,7 @@ import { sendEmail, subscriptionRecipient, type SendResult } from "./send";
  * charge was already on the ledger, which is the system working.
  *
  * Note the weekly spending report deliberately takes the *opposite* rule
- * (REPORTS.md §6.4): it sends every Saturday regardless, because a silent
+ * (ARCHITECTURE.md): it sends every Saturday regardless, because a silent
  * Saturday must be readable as "the cron is broken".
  */
 export function shouldSendRunEmail(result: SubscriptionRunResult): boolean {

@@ -14,7 +14,7 @@ import {
 } from "@/hooks/use-finance-data";
 
 /**
- * The CRUD tables (FEATURES.md §5). Deliberately thin: Phase 0 built the write
+ * The CRUD tables (ARCHITECTURE.md). Deliberately thin: Phase 0 built the write
  * path, Phase 1 built the editors' first caller, and this page is
  * `ReceiptsTable` / `DisbursementsTable` with `editable` and `selectable`
  * turned on.

@@ -40,7 +40,7 @@ export class ForeignKeyViolationError extends Error {
  * `receipts_subscription_charge_uniq` — and it is **not an error condition**
  * there. It means the charge for that (subscription, date) is already recorded,
  * which is precisely what the runner wants to know after a crash between the
- * receipt insert and the counter advance. FEATURES.md §6.4 spells out why
+ * receipt insert and the counter advance. ARCHITECTURE.md spells out why
  * treating it as success is what makes the design self-repairing without
  * transactions; a reviewer who doesn't understand that will delete it.
  */

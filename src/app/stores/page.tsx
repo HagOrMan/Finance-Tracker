@@ -48,7 +48,7 @@ import {
 import { buildStoreGroups, type StoreGroup } from "@/lib/stores";
 
 /**
- * The hygiene page (FEATURES.md §4). Two tabs over the same machinery:
+ * The hygiene page (ARCHITECTURE.md). Two tabs over the same machinery:
  * **Stores** over `receipts.store`, **Entities** over `disbursements.entity`.
  *
  * Two things about it that are deliberate:
@@ -359,7 +359,7 @@ function storeSide(g: StoreGroup): MergeSide {
 }
 
 // ---------------------------------------------------------------------------
-// Entities (FEATURES.md §4.7 / D11)
+// Entities (ARCHITECTURE.md / D11)
 // ---------------------------------------------------------------------------
 
 function EntitiesTab({

@@ -14,7 +14,7 @@ import {
 
 /**
  * The bar that appears once rows are selected in a manage table
- * (FEATURES.md §5). Sticky to the bottom of the viewport, so it stays reachable
+ * (ARCHITECTURE.md). Sticky to the bottom of the viewport, so it stays reachable
  * however far down a long table the selection was made.
  *
  * The actions themselves are passed in as children — receipts and

@@ -1,5 +1,5 @@
 /**
- * The spending report email (REPORTS.md §3).
+ * The spending report email (ARCHITECTURE.md).
  *
  * Renders a `SpendingReport` — the same object `/reports` renders on screen.
  * Nothing here computes a figure; if a number needs deriving, it belongs in

@@ -15,7 +15,7 @@ import { reportTitle, type SpendingReport } from "@/lib/reports";
  * one, or a hand-built fixture, and it keeps the page above it responsible for
  * where the data came from.
  *
- * Section order matches the email exactly (REPORTS.md §3.1): the two numbers
+ * Section order matches the email exactly (ARCHITECTURE.md): the two numbers
  * that were asked for, then the breakdown, then the comparison, then the
  * excluded strip last — it's reference material, not a finding, and putting
  * $1,200 of rent above a $412 habitual total buries the lede.

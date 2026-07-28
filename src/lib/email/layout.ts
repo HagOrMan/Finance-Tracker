@@ -1,6 +1,6 @@
 /**
  * Shared email chrome — the document shell, the escaping, and the handful of
- * markup primitives both templates use (REPORTS.md §3.2).
+ * markup primitives both templates use (ARCHITECTURE.md).
  *
  * Everything here exists because **the target is Gmail, on a phone and on a
  * desktop**, and Gmail's mobile app strips `<head>` styles for accounts it

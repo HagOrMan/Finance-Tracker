@@ -1,5 +1,5 @@
 /**
- * Spending reports — the pure model (REPORTS.md §2).
+ * Spending reports — the pure model (ARCHITECTURE.md).
  *
  * **A report is a lens.** It writes nothing, stores nothing, and owns no table.
  * Everything in this file is a pure function of `(rows, period, today)`, which

@@ -26,7 +26,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { APP_ICON, APP_TITLE } from "@/lib/config";
 
 // Analysis pages stay inline; data-management pages live behind the "Manage"
-// popover (FEATURES.md §7.1). Nine links in one scrolling row overflows on
+// popover (ARCHITECTURE.md). Nine links in one scrolling row overflows on
 // desktop, and the two groups are different intents anyway — one asks "what did
 // I spend", the other "what is wrong with my data".
 const NAV_LINKS = [

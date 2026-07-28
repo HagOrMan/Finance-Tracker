@@ -34,7 +34,7 @@ import {
 } from "@/lib/subscriptions";
 
 /**
- * The subscriptions page (FEATURES.md §6.9).
+ * The subscriptions page (ARCHITECTURE.md).
  *
  * Note what this page is *not*: a source of spending figures. A subscription is
  * a schedule; the charges it generates are receipts, and receipts are what every

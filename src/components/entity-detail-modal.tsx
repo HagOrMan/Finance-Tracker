@@ -43,11 +43,11 @@ import type { Disbursement, MergedReceipt } from "@/lib/data/types";
 import { entityDisbursements, type EntityGroup } from "@/lib/entities";
 import { formatCurrency } from "@/lib/format";
 
-/** Matches `bulkUpdateDisbursementsSchema`'s id-list cap — FEATURES.md §3.3. */
+/** Matches `bulkUpdateDisbursementsSchema`'s id-list cap — ARCHITECTURE.md. */
 const BULK_ID_LIMIT = 1000;
 
 /**
- * The entity drill-down (FEATURES.md §4.7). The store modal minus the category
+ * The entity drill-down (ARCHITECTURE.md). The store modal minus the category
  * axis: an entity has no mix bar and no dominant category, so the bulk bar is
  * just rename and merge — both one `PATCH /api/disbursements/bulk` with
  * `{ ids, patch: { entity } }`.
@@ -56,11 +56,10 @@ const BULK_ID_LIMIT = 1000;
  * `refunded_from_receipt` is a foreign key, not a name, so no rename can
  * disturb `actual_price` anywhere in the app.
  *
- * The row list is **read-only in Phase 1.** Its receipt-row equivalent opens
- * `ReceiptEditor`, but the disbursement counterpart (`DisbursementEditor`) is
- * assigned to Phase 2 by FEATURES.md §5.1 — the `PATCH`/`DELETE` routes and
- * hooks it will use already exist from Phase 0 and are simply unused until
- * then. Until it lands, per-row fixes go through the Disbursements page.
+ * **The row list is read-only**, unlike the store modal's, whose rows open
+ * `ReceiptEditor`. `DisbursementEditor` exists and would drop straight in; it
+ * simply never got wired here. Until it is, per-row fixes go through
+ * `/manage` → Disbursements. Tracked in `PROGRESS.md`.
  */
 export function EntityDetailModal({
   group,
@@ -298,8 +297,7 @@ function EntityDetailBody({
             Disbursements ({rows.length})
           </h3>
           <span className="text-xs text-muted-foreground">
-            Read-only — per-row editing arrives with Phase 2&apos;s
-            DisbursementEditor.
+            Read-only — edit individual rows on Manage → Disbursements.
           </span>
         </div>
         <Table>
