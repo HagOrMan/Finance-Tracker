@@ -18,6 +18,7 @@ export function useFilteredReceipts() {
   const stores = useFiltersStore((s) => s.stores);
   const hasDiscount = useFiltersStore((s) => s.hasDiscount);
   const subtractRefunds = useFiltersStore((s) => s.subtractRefunds);
+  const hasHydrated = useFiltersStore((s) => s.hasHydrated);
   const filters = useMemo(
     () => ({ startDate, endDate, categories, stores, hasDiscount, subtractRefunds }),
     [startDate, endDate, categories, stores, hasDiscount, subtractRefunds]
@@ -38,7 +39,13 @@ export function useFilteredReceipts() {
   return {
     allReceipts,
     receipts,
-    isLoading,
+    // Folds the filter store's hydration into the same flag pages already gate
+    // on. Before it flips, `filters` holds defaults rather than the user's
+    // saved values, so `receipts` is a real list filtered by the wrong range —
+    // which renders as numbers that visibly change a frame later. "Not ready"
+    // is the honest description of that state, and every page already handles
+    // it.
+    isLoading: isLoading || !hasHydrated,
     error,
     filters,
     pcol: priceKey(filters),

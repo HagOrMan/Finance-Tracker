@@ -21,7 +21,7 @@ function monthOf(dateISO: string): string {
 }
 
 export default function MonthlyPage() {
-  const { data, isLoading, error } = useMergedReceipts();
+  const { data, isLoading: isFetching, error } = useMergedReceipts();
   const allReceipts = useMemo(() => data ?? [], [data]);
 
   // Read-only here: `FilterBar` owns the setters. This page only reads what the
@@ -31,6 +31,11 @@ export default function MonthlyPage() {
   const stores = useFiltersStore((s) => s.stores);
   const hasDiscount = useFiltersStore((s) => s.hasDiscount);
   const subtractRefunds = useFiltersStore((s) => s.subtractRefunds);
+  // This page reads the store directly rather than through
+  // `useFilteredReceipts`, so it has to fold hydration in itself: until the
+  // flag flips, the four values above are defaults, not the saved filters.
+  const hasHydrated = useFiltersStore((s) => s.hasHydrated);
+  const isLoading = isFetching || !hasHydrated;
 
   const pcol = subtractRefunds ? "actual_price" : "price";
   const plabel = subtractRefunds ? "Net paid ($)" : "Gross paid ($)";

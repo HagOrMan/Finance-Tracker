@@ -74,9 +74,14 @@ Quality only — no bugs. Noted so they aren't rediscovered as findings.
   `discount > 0 || discount_percentage > 0` predicate, the weekly/daily
   bucketing threshold shared by `/savings` and `/disbursements`, and the local
   table-filter-state pattern in three tables.
-- `src/store/filters-store.ts` exposes no `hasHydrated` gate, so pages briefly
-  render default filters before snapping to the persisted ones. The most
-  user-visible of these.
+- ~~`src/store/filters-store.ts` exposes no `hasHydrated` gate.~~ **Done** —
+  the store carries `hasHydrated` (not persisted), `FiltersHydrator` flips it
+  after `rehydrate()` resolves, and `useFilteredReceipts` folds it into
+  `isLoading` so the four pages using that hook get it for free. `/monthly` and
+  `/disbursements` read the store directly and fold it in themselves. The
+  filter *controls* still snap from defaults to saved values for one frame —
+  that's deliberate, since hiding the bar until hydration would shift the
+  layout, and the numbers are what mattered.
 - ~~`getDataSource()` doesn't document that it no longer needs a request
   scope.~~ **Not real** — its docblock already says so.
 

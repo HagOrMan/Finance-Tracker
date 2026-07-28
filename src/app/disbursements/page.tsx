@@ -38,7 +38,7 @@ import { daysBetween, isoWeekStart } from "@/lib/dates";
 type TypeFilter = "All" | "Refund" | "Standalone";
 
 export default function DisbursementsPage() {
-  const { data: disbData, isLoading, error } = useDisbursements();
+  const { data: disbData, isLoading: isFetching, error } = useDisbursements();
   const { data: receiptsData } = useMergedReceipts();
   const refresh = useRefreshFinanceData();
   const disbursements = useMemo(() => disbData ?? [], [disbData]);
@@ -49,6 +49,11 @@ export default function DisbursementsPage() {
   const entities = useFiltersStore((s) => s.entities);
   const setDateRange = useFiltersStore((s) => s.setDateRange);
   const setEntities = useFiltersStore((s) => s.setEntities);
+  // This page has its own filter bar rather than using `useFilteredReceipts`,
+  // so it folds hydration in itself: the date range above is the 30-day default
+  // until the flag flips, which for this page is the whole filter.
+  const hasHydrated = useFiltersStore((s) => s.hasHydrated);
+  const isLoading = isFetching || !hasHydrated;
 
   const entityOptions = useMemo(
     () => [...new Set(disbursements.map((d) => d.entity))].sort(),
