@@ -1,20 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
 
-import { FilterShell } from "@/components/filter-shell";
+import { FilterBar } from "@/components/filter-bar";
 import { MultiSelect } from "@/components/multi-select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { StatCard } from "@/components/charts/stat-card";
 import { StackedCategoryBarChart } from "@/components/charts/stacked-category-bar-chart";
 import { CategoryLineChart } from "@/components/charts/category-line-chart";
@@ -22,14 +11,10 @@ import { CategoryMonthHeatmap } from "@/components/charts/category-month-heatmap
 import { ReceiptsTable } from "@/components/receipts-table";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  useMergedReceipts,
-  useRefreshFinanceData,
-} from "@/hooks/use-finance-data";
+import { useMergedReceipts } from "@/hooks/use-finance-data";
 import { useCategoryColors } from "@/hooks/use-category-colors";
 import { useFiltersStore } from "@/store/filters-store";
 import { formatCurrency } from "@/lib/format";
-import type { Filters } from "@/lib/filters";
 
 function monthOf(dateISO: string): string {
   return dateISO.slice(0, 7);
@@ -37,17 +22,15 @@ function monthOf(dateISO: string): string {
 
 export default function MonthlyPage() {
   const { data, isLoading, error } = useMergedReceipts();
-  const refresh = useRefreshFinanceData();
   const allReceipts = useMemo(() => data ?? [], [data]);
 
+  // Read-only here: `FilterBar` owns the setters. This page only reads what the
+  // shared bar wrote, plus its own month selection, which is the one axis the
+  // store deliberately doesn't hold — months are this page's alone.
   const categories = useFiltersStore((s) => s.categories);
   const stores = useFiltersStore((s) => s.stores);
   const hasDiscount = useFiltersStore((s) => s.hasDiscount);
   const subtractRefunds = useFiltersStore((s) => s.subtractRefunds);
-  const setCategories = useFiltersStore((s) => s.setCategories);
-  const setStores = useFiltersStore((s) => s.setStores);
-  const setHasDiscount = useFiltersStore((s) => s.setHasDiscount);
-  const setSubtractRefunds = useFiltersStore((s) => s.setSubtractRefunds);
 
   const pcol = subtractRefunds ? "actual_price" : "price";
   const plabel = subtractRefunds ? "Net paid ($)" : "Gross paid ($)";
@@ -65,15 +48,12 @@ export default function MonthlyPage() {
     [effectiveMonths],
   );
 
-  const categoryOptions = useMemo(
-    () => [...new Set(allReceipts.map((r) => r.category))].sort(),
-    [allReceipts],
+  // Over every category in the ledger, not just the filtered months — the
+  // colour map is assigned by alphabetical index, so narrowing it here would
+  // recolour categories relative to every other page.
+  const colorMap = useCategoryColors(
+    useMemo(() => allReceipts.map((r) => r.category), [allReceipts]),
   );
-  const storeOptions = useMemo(
-    () => [...new Set(allReceipts.map((r) => r.store))].sort(),
-    [allReceipts],
-  );
-  const colorMap = useCategoryColors(categoryOptions);
 
   const filtered = useMemo(() => {
     return allReceipts.filter((r) => {
@@ -172,72 +152,20 @@ export default function MonthlyPage() {
         📆 Monthly Breakdown
       </h1>
 
-      <FilterShell
-        activeCount={
-          (categories.length > 0 ? 1 : 0) +
-          (stores.length > 0 ? 1 : 0) +
-          (hasDiscount !== "Any" ? 1 : 0)
+      {/* Same bar as every other page, with the date range swapped for months
+          — this page scopes by whole months, and non-consecutive ones at that,
+          which a start/end range can't express. */}
+      <FilterBar
+        leading={
+          <MultiSelect
+            label="Months (any, non-consecutive ok)"
+            options={allMonthsDesc}
+            selected={effectiveMonths}
+            onChange={setSelectedMonths}
+            className="w-65 max-sm:w-full"
+          />
         }
-      >
-        <MultiSelect
-          label="Months (any, non-consecutive ok)"
-          options={allMonthsDesc}
-          selected={effectiveMonths}
-          onChange={setSelectedMonths}
-          className="w-65 max-sm:w-full"
-        />
-        <MultiSelect
-          label="Category"
-          options={categoryOptions}
-          selected={categories}
-          onChange={setCategories}
-          className="w-50 max-sm:w-full"
-        />
-        <MultiSelect
-          label="Store"
-          options={storeOptions}
-          selected={stores}
-          onChange={setStores}
-          className="w-50 max-sm:w-full"
-        />
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs font-medium text-muted-foreground">
-            Has discount
-          </Label>
-          <Select
-            value={hasDiscount}
-            onValueChange={(v) => setHasDiscount(v as Filters["hasDiscount"])}
-          >
-            <SelectTrigger className="w-27.5 max-sm:w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Any">Any</SelectItem>
-              <SelectItem value="Yes">Yes</SelectItem>
-              <SelectItem value="No">No</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2 pb-2 max-sm:justify-between max-sm:pb-0">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="monthly-net-paid"
-              checked={subtractRefunds}
-              onCheckedChange={(v) => setSubtractRefunds(v === true)}
-            />
-            <Label htmlFor="monthly-net-paid">Net paid</Label>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={refresh}
-            aria-label="Refresh data"
-          >
-            <RefreshCw className="size-4" />
-          </Button>
-        </div>
-      </FilterShell>
+      />
 
       {error && (
         <p className="text-sm text-destructive">

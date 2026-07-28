@@ -58,8 +58,11 @@ Routes: `/` `/daily` `/monthly` `/categories` `/savings` `/disbursements`
 
 Quality only — no bugs. Noted so they aren't rediscovered as findings.
 
-- `src/app/monthly/page.tsx` reimplements the filter bar instead of extending
-  `filter-bar.tsx`, which would need a way to swap its leading control.
+- ~~`src/app/monthly/page.tsx` reimplements the filter bar.~~ **Done** —
+  `FilterBar` takes an optional `leading` node that replaces the date-range
+  inputs; `/monthly` passes its month multiselect. `/disbursements` keeps its
+  own bar on purpose: its filter set is different rather than reordered, so
+  folding it in would mean making nearly every control optional.
 - `src/lib/dates.ts` hand-rolls week/day math; `date-fns` is a dependency and
   unused. Worth switching if a date bug ever surfaces.
 - Small duplications: the bucket+category `Map` accumulation on the daily and

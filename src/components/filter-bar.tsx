@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,9 +23,31 @@ import {
 } from "@/hooks/use-finance-data";
 import type { Filters } from "@/lib/filters";
 
-export function FilterBar() {
+/**
+ * The shared filter row.
+ *
+ * Every page that filters by category / store / discount uses this, and they
+ * differ in exactly one control: most scope by a **date range**, `/monthly`
+ * scopes by a **month multiselect**. That control is the `leading` prop; the
+ * rest of the row — and the active-filter count the collapsed mobile bar shows
+ * — is identical and lives here once.
+ *
+ * `/disbursements` deliberately keeps its own bar. Its filter set is different
+ * rather than merely reordered (date range + entities, no category, store,
+ * discount or net-paid), so folding it in would mean making almost every
+ * control optional, which costs more than the duplication saves.
+ */
+export function FilterBar({
+  /** Replaces the date-range inputs. Omit for the default date-range bar. */
+  leading,
+}: {
+  leading?: ReactNode;
+} = {}) {
   const { data: receipts } = useMergedReceipts();
   const refresh = useRefreshFinanceData();
+  // Unique per instance so the label still targets the right box if two bars
+  // ever render at once — the pages used to hand-pick ids to avoid colliding.
+  const netPaidId = useId();
 
   const startDate = useFiltersStore((s) => s.startDate);
   const endDate = useFiltersStore((s) => s.endDate);
@@ -55,30 +78,32 @@ export function FilterBar() {
 
   return (
     <FilterShell activeCount={activeCount}>
-      <div className="flex flex-col gap-1">
-        <Label
-          className="text-xs font-medium text-muted-foreground"
-          htmlFor="filter-start"
-        >
-          Date range
-        </Label>
-        <div className="flex items-center gap-2">
-          <Input
-            id="filter-start"
-            type="date"
-            value={startDate}
-            onChange={(e) => setDateRange(e.target.value, endDate)}
-            className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
-          />
-          <span className="text-muted-foreground">-</span>
-          <Input
-            type="date"
-            value={endDate}
-            onChange={(e) => setDateRange(startDate, e.target.value)}
-            className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
-          />
+      {leading ?? (
+        <div className="flex flex-col gap-1">
+          <Label
+            className="text-xs font-medium text-muted-foreground"
+            htmlFor="filter-start"
+          >
+            Date range
+          </Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="filter-start"
+              type="date"
+              value={startDate}
+              onChange={(e) => setDateRange(e.target.value, endDate)}
+              className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
+            />
+            <span className="text-muted-foreground">-</span>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => setDateRange(startDate, e.target.value)}
+              className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <MultiSelect
         label="Category"
@@ -121,11 +146,11 @@ export function FilterBar() {
       <div className="flex items-center gap-2 pb-2 max-sm:justify-between max-sm:pb-0">
         <div className="flex items-center gap-2">
           <Checkbox
-            id="net-paid"
+            id={netPaidId}
             checked={subtractRefunds}
             onCheckedChange={(v) => setSubtractRefunds(v === true)}
           />
-          <Label htmlFor="net-paid">Net paid</Label>
+          <Label htmlFor={netPaidId}>Net paid</Label>
         </div>
         <Button
           type="button"
