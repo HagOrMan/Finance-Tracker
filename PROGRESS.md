@@ -137,9 +137,61 @@ See `migration.md` for the full record of migration-time decisions (data layer d
   - **The `Sub` badge from Phase 2 now has data behind it** — `subscription_id` joined `RECEIPT_COLUMNS` with this migration. It still links nowhere; §6.9's "view generated receipts" filter into `/manage` is noted below as a follow-up rather than built, since `/manage` has no URL-driven filter state today.
   - `pnpm add resend` (6.18.0). New env vars: `APP_TIMEZONE`, `CRON_SECRET`, `RESEND_API_KEY`, `SUBSCRIPTION_EMAIL_TO`, `SUBSCRIPTION_EMAIL_FROM` — all documented in `.env.example`. `vercel.json` committed with the single Hobby-plan cron slot at `0 12 * * *`.
 
+### Mobile pass (2026-07-28) — quick-add drawer and shared primitives
+
+Reported: on a phone, tapping into a quick-add field zoomed the page and never
+zoomed back; scrolling down either re-focused a field or dragged the whole sheet
+away. Two independent root causes, both in shared primitives rather than in
+quick-add itself:
+
+- **iOS Safari force-zooms any focused text field under 16px** and does not undo
+  it on blur — the whole "it looks weird after I tap, and still weird after I tap
+  out" report. Every control here was `text-sm` (14px). Fixed once, globally, in
+  `src/app/globals.css`: an **unlayered** `@media (pointer: coarse)` block that
+  sets form controls to 16px. Unlayered because Tailwind v4 puts utilities in
+  `@layer utilities`, and unlayered rules outrank every layer — so it beats
+  `text-sm` without `!important` and without touching the desktop design.
+  Deliberately *not* fixed with `maximum-scale=1`, which would take pinch-zoom
+  away from everyone; `src/app/layout.tsx` now has an explicit `viewport` export
+  that keeps `maximumScale: 5` and adds `viewportFit: "cover"`.
+- **The drawer had no scroll container**, which is the whole "it drags the sheet
+  out instead of scrolling" problem. vaul's `shouldDrag` walks up the DOM for an
+  ancestor with `scrollHeight > clientHeight`; finding none scrolled, it reaches
+  the `role="dialog"` element and returns *drag*. New **`DrawerBody`** (in
+  `src/components/ui/drawer.tsx`) gives it one to find. Two details are
+  load-bearing and easy to drop: **`min-h-0`** (a flex item's default
+  `min-height: auto` refuses to shrink below its content, so `flex-1
+  overflow-y-auto` alone silently never scrolls) and `overscroll-contain` (stops
+  the scroll chaining into the page behind the overlay). All six drawer callers
+  now use it — three of them already had a bare `overflow-y-auto` div that, for
+  the `min-h-0` reason, had never actually scrolled.
+
+Also in the pass: `svh` instead of `vh` for sheet/dialog heights (mobile Safari
+measures `vh` against the chrome-retracted viewport, so 85vh is taller than the
+screen); `DialogContent` inset from the screen edges and height-capped, which
+gives the two editors a scroll on mobile they didn't have; 44px touch targets via
+`max-sm:` on input/select/tabs/checkbox/command rows; `inputMode="decimal"` on
+every money field; safe-area padding under the quick-add button and the drawer;
+and the autocomplete list capped at `45svh` with a `scrollIntoView` on open, since
+it is absolutely positioned and now sits inside a clipping scroll container.
+
+Not done: no bottom-nav or per-page mobile layout work — the nav row still
+horizontally scrolls on a phone, and the wide tables on `/manage` and
+`/disbursements` are untouched.
+
 ## In progress
 
 - **Nothing — Phases 0–3 of [`FEATURES.md`](FEATURES.md) are built.** What's left is your verification pass and the deploy (see the backlog below), which is the point at which the *scheduled* path can be tested at all.
+
+## Next — designed, not built
+
+- **[`REPORTS.md`](REPORTS.md) — spending reports.** Approved design, no code yet. A Saturday email summarising the past week, plus on-demand week/month/year reviews from a new `/reports` page. **No migration and no schema change** — a report is a lens over receipts + disbursements (`FEATURES.md` §0), so it writes nothing and stores nothing, including "when did I last send one". Points worth knowing before starting:
+  - **One window rule**: the N days ending yesterday (7/30/365). Run on a Saturday, the weekly window *is* last Sat→Fri — the builder never learns what day of the week it is; only the cron does.
+  - **Travel / School / Rent are excluded from the headline and all comparison math**, and reported in a separate strip with an all-in total. Matching goes through `nameGroupKey`, not a second normaliser.
+  - **It folds into the existing subscriptions cron handler**, exactly as `FEATURES.md` §6.6 predicted a second scheduled job would have to on Hobby's single slot. So no new `vercel.json` entry, no new `PUBLIC_PATHS` entry, and no third auth gate.
+  - **`src/lib/email.ts` becomes `src/lib/email/`** with an `index.ts` re-export, so the two existing importers don't change. The subscription templates move verbatim.
+  - **The one non-obvious trap** (§3.3): `buildCategoryColorMap` assigns colors by alphabetical index over the set it's given, so the email must build its map over *every* category in the ledger — not just the report window's — or the same category gets different colors in the email and in the app.
+  - Build order and the full verification list are in §9 / §10 of that file.
 
 ## Needs your attention (Phase 0)
 

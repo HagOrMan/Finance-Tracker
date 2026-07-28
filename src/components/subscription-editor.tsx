@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Drawer,
+  DrawerBody,
   DrawerContent,
   DrawerDescription,
   DrawerHeader,
@@ -118,7 +119,7 @@ export function SubscriptionEditor({
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerDescription>{subtitle}</DrawerDescription>
         </DrawerHeader>
-        <div className="overflow-y-auto px-4 pb-6">{body}</div>
+        <DrawerBody>{body}</DrawerBody>
       </DrawerContent>
     </Drawer>
   );
@@ -295,7 +296,13 @@ function SubscriptionForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="s-price">Price ($)</Label>
-          <Input id="s-price" type="number" step="0.01" {...register("price")} />
+          <Input
+            id="s-price"
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            {...register("price")}
+          />
           {errors.price && (
             <p className="text-xs text-destructive">{errors.price.message}</p>
           )}
@@ -317,6 +324,7 @@ function SubscriptionForm({
           <Input
             id="s-count"
             type="number"
+            inputMode="numeric"
             min="1"
             step="1"
             {...register("interval_count")}

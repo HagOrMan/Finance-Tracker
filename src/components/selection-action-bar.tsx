@@ -36,7 +36,9 @@ export function SelectionActionBar({
   if (count === 0) return null;
 
   return (
-    <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-2 rounded-lg border-2 border-primary bg-card p-2 shadow-lg">
+    // The extra mobile right padding keeps "Clear" out from under the
+    // quick-add button, which floats over this same bottom-right corner.
+    <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-2 rounded-lg border-2 border-primary bg-card p-2 shadow-lg max-sm:pr-20">
       <span className="px-1 text-sm font-medium text-foreground">
         {count} {noun}
         {count === 1 ? "" : "s"} selected

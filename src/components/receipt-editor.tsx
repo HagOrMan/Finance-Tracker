@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Drawer,
+  DrawerBody,
   DrawerContent,
   DrawerDescription,
   DrawerHeader,
@@ -101,7 +102,9 @@ export function ReceiptEditor({
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerDescription>{subtitle}</DrawerDescription>
         </DrawerHeader>
-        <div className="px-4 pb-6">{form}</div>
+        {/* DrawerBody, not a plain div: without a scroll container vaul reads
+            every downward swipe on an overflowing form as drag-to-dismiss. */}
+        <DrawerBody>{form}</DrawerBody>
       </DrawerContent>
     </Drawer>
   );
@@ -231,7 +234,13 @@ function ReceiptEditorForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="e-price">Price ($)</Label>
-          <Input id="e-price" type="number" step="0.01" {...register("price")} />
+          <Input
+            id="e-price"
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            {...register("price")}
+          />
           {errors.price && (
             <p className="text-xs text-destructive">{errors.price.message}</p>
           )}
@@ -251,6 +260,7 @@ function ReceiptEditorForm({
           <Input
             id="e-discount"
             type="number"
+            inputMode="decimal"
             step="0.01"
             {...register("discount")}
           />
@@ -260,6 +270,7 @@ function ReceiptEditorForm({
           <Input
             id="e-discount-pct"
             type="number"
+            inputMode="decimal"
             step="0.1"
             {...register("discount_percentage")}
           />

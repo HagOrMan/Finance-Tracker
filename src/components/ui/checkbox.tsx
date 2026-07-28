@@ -16,7 +16,12 @@ function Checkbox({
       className={cn(
         "peer border-input data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary",
         "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-        "size-4 shrink-0 cursor-pointer rounded-[4px] border shadow-xs outline-none transition-shadow disabled:cursor-not-allowed disabled:opacity-50",
+        "size-4 shrink-0 cursor-pointer touch-manipulation rounded-[4px] border shadow-xs outline-none transition-shadow disabled:cursor-not-allowed disabled:opacity-50",
+        // A 16px box is well under the 44px touch minimum. The `::after` ring
+        // extends the hit area without taking up layout space, so nothing
+        // around it shifts — it stays a 20px box that behaves like a 40px one.
+        "max-sm:relative max-sm:size-5",
+        "max-sm:after:absolute max-sm:after:-inset-2.5 max-sm:after:content-['']",
         className
       )}
       {...props}

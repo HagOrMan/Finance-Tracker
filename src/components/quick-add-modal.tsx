@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Drawer,
+  DrawerBody,
   DrawerContent,
   DrawerDescription,
   DrawerHeader,
@@ -66,7 +67,9 @@ export function QuickAddButton() {
     <Button
       type="button"
       size="icon"
-      className="fixed right-6 bottom-6 z-30 size-14 rounded-full shadow-lg"
+      // Bottom offset clears the iOS home indicator — `viewportFit: "cover"` in
+      // the root layout is what makes `env(safe-area-inset-bottom)` non-zero.
+      className="fixed right-6 bottom-[max(1.5rem,calc(env(safe-area-inset-bottom)+0.5rem))] z-30 size-14 rounded-full shadow-lg"
       aria-label="Quick add"
     >
       <Plus className="size-6" />
@@ -96,9 +99,11 @@ export function QuickAddButton() {
           <DrawerTitle>Quick add</DrawerTitle>
           <DrawerDescription>Log a new receipt or disbursement.</DrawerDescription>
         </DrawerHeader>
-        <div className="px-4 pb-6">
+        {/* DrawerBody, not a plain div — see its doc comment. A plain wrapper
+            is what made every downward swipe drag the whole sheet closed. */}
+        <DrawerBody>
           <QuickAddForm onDone={() => setOpen(false)} />
-        </div>
+        </DrawerBody>
       </DrawerContent>
     </Drawer>
   );
@@ -305,7 +310,16 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="r-price">Price ($)</Label>
-          <Input id="r-price" type="number" step="0.01" {...register("price")} />
+          {/* `inputMode="decimal"` so mobile opens the numeric keypad with a
+              decimal point — `type="number"` alone gives a keypad without one
+              on several Android keyboards. */}
+          <Input
+            id="r-price"
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            {...register("price")}
+          />
           {errors.price && <p className="text-xs text-destructive">{errors.price.message}</p>}
         </div>
         <div className="flex flex-col gap-1.5">
@@ -317,13 +331,20 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="r-discount">Discount ($)</Label>
-          <Input id="r-discount" type="number" step="0.01" {...register("discount")} />
+          <Input
+            id="r-discount"
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            {...register("discount")}
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="r-discount-pct">Discount (%)</Label>
           <Input
             id="r-discount-pct"
             type="number"
+            inputMode="decimal"
             step="0.1"
             {...register("discount_percentage")}
           />
@@ -414,7 +435,13 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="d-amount">Amount ($)</Label>
-          <Input id="d-amount" type="number" step="0.01" {...register("amount")} />
+          <Input
+            id="d-amount"
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            {...register("amount")}
+          />
           {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
         </div>
         <div className="flex flex-col gap-1.5">
@@ -451,7 +478,12 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
               <ChevronsUpDown className="opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[320px] p-0" align="start">
+          {/* Was a flat 320px, which overflows the screen edge on a narrow
+              phone once the drawer's own padding is accounted for. */}
+          <PopoverContent
+            className="w-[min(20rem,calc(100vw-2rem))] p-0"
+            align="start"
+          >
             <Command>
               <CommandInput placeholder="Search receipts…" />
               <CommandList>

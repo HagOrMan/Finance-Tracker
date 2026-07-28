@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Drawer,
+  DrawerBody,
   DrawerContent,
   DrawerDescription,
   DrawerHeader,
@@ -122,7 +123,9 @@ export function DisbursementEditor({
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerDescription>{subtitle}</DrawerDescription>
         </DrawerHeader>
-        <div className="px-4 pb-6">{form}</div>
+        {/* DrawerBody, not a plain div: without a scroll container vaul reads
+            every downward swipe on an overflowing form as drag-to-dismiss. */}
+        <DrawerBody>{form}</DrawerBody>
       </DrawerContent>
     </Drawer>
   );
@@ -244,6 +247,7 @@ function DisbursementEditorForm({
           <Input
             id="de-amount"
             type="number"
+            inputMode="decimal"
             step="0.01"
             {...register("amount")}
           />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
@@ -44,6 +44,7 @@ export function AutocompleteInput({
   const listId = `${useId()}-suggestions`;
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const trimmed = query.trim().toLowerCase();
   const matches = useMemo(
@@ -59,6 +60,18 @@ export function AutocompleteInput({
   const exhausted =
     matches.length === 1 && matches[0]?.toLowerCase() === trimmed;
   const show = open && matches.length > 0 && !exhausted;
+
+  // The list is absolutely positioned, so inside a scrolling parent — which is
+  // what the mobile drawer body now is — it gets clipped rather than painting
+  // over the edge. `block: "nearest"` scrolls only far enough to reveal it and
+  // does nothing when it already fits, so this is a no-op on desktop.
+  useEffect(() => {
+    if (!show) return;
+    const frame = requestAnimationFrame(() => {
+      listRef.current?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [show, matches.length]);
 
   function pick(value: string) {
     onPick(value);
@@ -117,8 +130,11 @@ export function AutocompleteInput({
       {show && (
         <ul
           id={listId}
+          ref={listRef}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          // 14rem is the old `max-h-56`; the `svh` term is what keeps the list
+          // from eating the whole visible area on a phone with the keyboard up.
+          className="absolute z-50 mt-1 max-h-[min(14rem,45svh)] w-full overflow-y-auto overscroll-contain rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {matches.map((s, i) => (
             <li
@@ -134,6 +150,7 @@ export function AutocompleteInput({
               onMouseEnter={() => setHighlight(i)}
               className={cn(
                 "flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm",
+                "max-sm:py-2.5 max-sm:text-base",
                 i === highlight && "bg-accent text-accent-foreground",
               )}
             >

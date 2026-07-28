@@ -37,8 +37,10 @@ function SelectTrigger({
       className={cn(
         "border-input data-placeholder:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground",
         "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-        "flex w-fit cursor-pointer items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs outline-none transition-[color,box-shadow] disabled:cursor-not-allowed disabled:opacity-50",
-        "data-[size=default]:h-9 data-[size=sm]:h-8",
+        "flex w-fit cursor-pointer touch-manipulation items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs outline-none transition-[color,box-shadow] disabled:cursor-not-allowed disabled:opacity-50",
+        // Matches the taller mobile `Input`, so a label + control row is the
+        // same height whichever kind of control it holds.
+        "data-[size=default]:h-9 data-[size=sm]:h-8 max-sm:data-[size=default]:h-11 max-sm:data-[size=sm]:h-10",
         "*:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2",
         "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
@@ -98,6 +100,9 @@ function SelectItem({
       className={cn(
         "focus:bg-accent focus:text-accent-foreground",
         "relative flex w-full cursor-pointer items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50",
+        // Roomier rows on touch — the 12-entry category list was easy to
+        // mis-tap at 1.5 units of vertical padding.
+        "max-sm:py-2.5 max-sm:text-base",
         className,
       )}
       {...props}

@@ -412,3 +412,35 @@
     font-family: Arial, Helvetica, sans-serif;
   }
 }
+
+/*
+  ─── Touch-device form controls ───────────────────────────────────────────────
+
+  iOS Safari zooms the whole page whenever a focused text field's font-size is
+  under 16px — and it does *not* zoom back out on blur, which is what left the
+  quick-add drawer stuck at a shifted scale after the first tap. The design's
+  14px (`text-sm`) controls are exactly what triggers it, so on coarse pointers
+  only, text-entry controls go to 16px and the zoom never fires.
+
+  Deliberately not solved with `maximum-scale=1` in the viewport meta: that also
+  kills *deliberate* pinch-zoom, which is a real accessibility regression. See
+  the `viewport` export in `src/app/layout.tsx`.
+
+  Unlayered on purpose. Tailwind v4 puts its utilities in `@layer utilities`,
+  and unlayered rules outrank every layer, so this wins over `text-sm` on the
+  element without needing `!important`. Height/padding for touch targets is
+  handled the normal way, with `max-sm:` utilities in `src/components/ui/`.
+*/
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  [data-slot="select-trigger"] {
+    font-size: 16px;
+  }
+}
+
+/* Safari otherwise inflates text on rotation to portrait. */
+html {
+  -webkit-text-size-adjust: 100%;
+}

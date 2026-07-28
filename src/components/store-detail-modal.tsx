@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Drawer,
+  DrawerBody,
   DrawerContent,
   DrawerDescription,
   DrawerHeader,
@@ -126,7 +127,7 @@ export function StoreDetailModal({
           </DrawerTitle>
           <DrawerDescription>{subtitle}</DrawerDescription>
         </DrawerHeader>
-        <div className="overflow-y-auto px-4 pb-6">{body}</div>
+        <DrawerBody>{body}</DrawerBody>
       </DrawerContent>
     </Drawer>
   );
