@@ -30,16 +30,22 @@ Routes: `/` `/daily` `/monthly` `/categories` `/savings` `/disbursements`
    would drop straight in — it just never got wired into
    `entity-detail-modal.tsx`, while the Stores tab's equivalent rows open
    `ReceiptEditor`. Small, self-contained fix.
-4. **Three judgment calls still yours**, none blocking:
-   - ISO-week bucketing (Mon–Sun) on `/savings` and `/disbursements` differs
-     from the old Streamlit app's pandas `resample("W")` (Sunday-ending weeks).
-   - The Daily stacked bar sums same-day receipts within a category into one
-     segment; the old app drew one segment per receipt. Every receipt is still
-     listed in the table below the chart.
-   - The quick-add "refund of receipt" combobox searches *all* receipts.
+4. **The quick-add "refund of receipt" combobox searches all receipts**, which
+   is fine at the current size. If it ever gets slow, the agreed shape is: show
+   the most recent N by default, and only search the full history once ~3
+   characters are typed.
 5. **TypeScript is pinned to 5.x and ESLint to 9.x**, not the newest majors —
    `typescript-eslint` and `eslint-config-next` peer ranges hadn't caught up.
    Revisit when they have.
+
+## Settled
+
+- **ISO-week bucketing (Mon–Sun) stays** on `/savings` and `/disbursements`,
+  despite differing from the old Streamlit app's Sunday-ending pandas weeks.
+- **The Daily chart draws one segment per receipt** (`daily-receipt-bar-chart.tsx`),
+  matching the original Streamlit behaviour. `/monthly` deliberately keeps the
+  category-summed `StackedCategoryBarChart` — 200 segments in a month bar is
+  noise, not detail.
 
 ## Known non-issues
 

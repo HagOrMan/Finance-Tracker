@@ -125,6 +125,22 @@ strips unknown keys, and that is the entire mechanism keeping `id`,
 - Editing a disbursement is the more dangerous of the two edits: `amount` and
   `refunded_from_receipt` feed `actual_price` everywhere.
 
+### Charts
+
+- **`/daily` draws one stacked segment per receipt; `/monthly` sums by
+  category.** Recharts stacks by `dataKey`, so per-receipt segments need a key
+  per receipt-slot. Keys are `(category, nth occurrence that day)` rather than
+  stack position — every series then holds one category, its fill is a
+  constant, and no `shape` render prop is needed. The legend is given an
+  explicit per-category payload so it doesn't list the same category once per
+  slot.
+- Receipts worth ≤ 0 net (fully refunded) are omitted from the Daily chart —
+  they contributed nothing, and a negative segment breaks the stack's geometry.
+  They remain in the table below it.
+- Bar tooltips in Recharts are driven by the x-axis category, so the Daily
+  tooltip knows which *day* is hovered, not which segment. It lists the day's
+  receipts, which is what the hover was asking anyway.
+
 ### Stores and entities (`/stores`)
 
 Two-tier grouping, in `src/lib/name-groups.ts`:

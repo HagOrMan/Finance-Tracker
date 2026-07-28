@@ -2,18 +2,24 @@
 
 A personal finance tracker — Next.js + Supabase. Tracks receipts (money paid out) and disbursements (money received back, often refunds for group purchases).
 
-See `CLAUDE.md` for how this repo is organized and worked on, and `migration.md` for the full record of the Streamlit → Next.js migration. The original Streamlit app is preserved in `legacy_streamlit/`.
+- `CLAUDE.md` — how this repo is organized and worked on
+- `ARCHITECTURE.md` — why it's shaped this way, and the invariants
+- `PROGRESS.md` — current state and open work
+
+The original Streamlit app it was migrated from is preserved in `legacy_streamlit/`.
 
 ## Setup
 
 ```bash
 pnpm install
-cp .env.example .env.local   # fill in your Supabase project's URL/anon key
+cp .env.example .env.local   # every var is documented there
 pnpm dev
 ```
 
-See `PROGRESS.md`'s "Backlog" section for the full one-time Supabase setup checklist (schema, auth providers, data migration from the old SQLite DB).
+Schema lives in `supabase/migrations/`. `finance_tracker` must be added to the
+Supabase project's exposed-schemas setting, and `OWNER_USER_IDS` bootstrapped by
+signing in once and copying the id printed on `/login`.
 
 ## Stack
 
-Next.js (App Router) · React · TypeScript · Tailwind v4 · shadcn/ui · Supabase (Postgres + Auth) · TanStack Query · Zustand · Recharts
+Next.js (App Router) · React · TypeScript · Tailwind v4 · shadcn/ui · Supabase (Postgres + Auth) · TanStack Query · Zustand · Recharts · Resend
