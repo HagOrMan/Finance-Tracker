@@ -63,16 +63,22 @@ Quality only — no bugs. Noted so they aren't rediscovered as findings.
   inputs; `/monthly` passes its month multiselect. `/disbursements` keeps its
   own bar on purpose: its filter set is different rather than reordered, so
   folding it in would mean making nearly every control optional.
-- `src/lib/dates.ts` hand-rolls week/day math; `date-fns` is a dependency and
-  unused. Worth switching if a date bug ever surfaces.
-- Small duplications: the bucket+category `Map` accumulation on the daily and
-  monthly pages, the `discount > 0 || discount_percentage > 0` predicate, the
-  weekly/daily bucketing threshold, and the local table-filter-state pattern in
-  three tables.
+- ~~`src/lib/dates.ts` hand-rolls week/day math; `date-fns` is unused.~~
+  **Resolved the other way** — `date-fns` removed rather than adopted. It works
+  on `Date` objects in local time, which is exactly the off-by-one this app's
+  string-based dates exist to avoid, and `todayInZone` has no equivalent
+  without `date-fns-tz`. Reasoning is recorded at the top of `dates.ts` so it
+  doesn't get re-raised.
+- Small duplications: the bucket+category `Map` accumulation (now only within
+  `/monthly`, twice — `/daily` no longer does it), the
+  `discount > 0 || discount_percentage > 0` predicate, the weekly/daily
+  bucketing threshold shared by `/savings` and `/disbursements`, and the local
+  table-filter-state pattern in three tables.
 - `src/store/filters-store.ts` exposes no `hasHydrated` gate, so pages briefly
-  render default filters before snapping to the persisted ones.
-- `getDataSource()` no longer needs a Next.js request scope, but nothing in the
-  file says so.
+  render default filters before snapping to the persisted ones. The most
+  user-visible of these.
+- ~~`getDataSource()` doesn't document that it no longer needs a request
+  scope.~~ **Not real** — its docblock already says so.
 
 ## Operational notes
 

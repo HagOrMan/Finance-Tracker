@@ -90,7 +90,10 @@ strips unknown keys, and that is the entire mechanism keeping `id`,
 
 - **Dates are plain `"YYYY-MM-DD"` strings**, compared lexicographically or via
   `src/lib/dates.ts`'s explicit-UTC helpers. `new Date("YYYY-MM-DD")` parses as
-  UTC midnight and displays as the previous day west of Greenwich.
+  UTC midnight and displays as the previous day west of Greenwich. That is also
+  why there is **no date library**: date-fns and friends operate on `Date` in
+  local time, so adopting one reintroduces the exact bug the convention
+  prevents. Fix date bugs in `dates.ts`.
 - **`todayISO()` uses the server's local zone; `todayInZone(APP_TIMEZONE)` is
   for anything scheduled.** On Vercel the server is UTC, so a cron would
   otherwise date things a day early.

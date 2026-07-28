@@ -2,6 +2,20 @@
 // math in UTC (via the explicit T00:00:00Z anchor) specifically to avoid
 // local-timezone `Date` parsing shifting the day — see ARCHITECTURE.md's note
 // on dates-as-strings.
+//
+// **Why this is hand-rolled rather than date-fns** — asked and answered, and
+// the dependency was carried unused for months before being dropped. date-fns
+// operates on `Date` objects in *local* time: `new Date("2026-07-25")` parses
+// as UTC midnight, so west of Greenwich it is already the 24th locally, and
+// `startOfISOWeek` on it returns the wrong week at the boundary. Using it
+// safely here would mean adding date-fns-tz, or wrapping every call in the same
+// explicit-UTC handling these ~20 lines already do — a dependency to work
+// around a dependency. `todayInZone` has no equivalent at all without
+// date-fns-tz, since it needs a named IANA zone.
+//
+// If a date bug ever does surface, fix it here. Reaching for a Date-based
+// library is the move that reintroduces the bug class this file exists to
+// prevent.
 
 export function isoWeekStart(dateISO: string): string {
   const d = new Date(`${dateISO}T00:00:00Z`);
