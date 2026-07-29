@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { APP_TIMEZONE } from "@/lib/config";
+import { invalidateSubscriptionCharges } from "@/lib/data/cache";
 import { dayOfWeekUTC, SATURDAY, todayInZone } from "@/lib/dates";
 import { sendSubscriptionRunEmail } from "@/lib/email";
 import { sendSpendingReport, type ReportSendOutcome } from "@/lib/reports-runner";
@@ -68,6 +69,7 @@ export async function GET(request: Request) {
     // report READS. A backfilled charge dated inside the report's window has to
     // be on the ledger before the report counts it.
     const result = await runDueSubscriptionCharges();
+    invalidateSubscriptionCharges();
     await sendSubscriptionRunEmail(result);
 
     // Then the report — never before, and never in a way that can change the
@@ -116,7 +118,11 @@ async function maybeSendWeeklyReport(): Promise<ReportSendOutcome> {
       // sometimes carrying a `subject` key and sometimes not.
       return { sent: false, subject: null, reason: "not-saturday" };
     }
-    return await sendSpendingReport("week", { today });
+    // `fresh: true` for the same reason the ordering above is load-bearing: the
+    // charges written moments ago may fall inside this window, and the report
+    // must not be built from a cache entry that predates them. This is the one
+    // read in the app that pays for a guaranteed round trip.
+    return await sendSpendingReport("week", { today, fresh: true });
   } catch (error) {
     console.error("[cron/subscriptions] Weekly report failed:", error);
     return {

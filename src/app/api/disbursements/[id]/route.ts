@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { badRequest, errorResponse, parseIdParam } from "@/lib/api";
 import { requireOwnerForApi } from "@/lib/auth-server";
+import { invalidateDisbursements } from "@/lib/data/cache";
 import { getDataSource } from "@/lib/data/source";
 import { updateDisbursementSchema } from "@/lib/data/schemas";
 
@@ -24,6 +25,7 @@ export async function PATCH(request: Request, { params }: Context) {
     const source = await getDataSource();
     // `parsed.data`, never `body` — see the receipts route for why.
     const disbursement = await source.updateDisbursement(id, parsed.data);
+    invalidateDisbursements();
     return NextResponse.json(disbursement);
   } catch (error) {
     return errorResponse(error, "Failed to update disbursement");
@@ -42,6 +44,7 @@ export async function DELETE(_request: Request, { params }: Context) {
     // It is the row that does the referencing.
     const source = await getDataSource();
     await source.deleteDisbursement(id);
+    invalidateDisbursements();
     return NextResponse.json({ ok: true, id });
   } catch (error) {
     return errorResponse(error, "Failed to delete disbursement");

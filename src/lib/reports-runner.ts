@@ -14,7 +14,7 @@ import "server-only";
 
 import { APP_TIMEZONE } from "@/lib/config";
 import { buildCategoryColorMap } from "@/lib/colors";
-import { getDataSource } from "@/lib/data/source";
+import { loadLedgerCached } from "@/lib/data/cache";
 import { todayInZone } from "@/lib/dates";
 import { sendSpendingReportEmail } from "@/lib/email";
 import {
@@ -31,6 +31,19 @@ export interface ReportSendOutcome {
 }
 
 /**
+ * What both entry points accept.
+ *
+ * `fresh` bypasses the server's Data Cache (`src/lib/data/cache.ts`). The cron
+ * sets it because it *writes subscription charges immediately beforehand* and a
+ * charge dated inside the window has to be counted; nothing else needs it, and
+ * a report is a read-only lens either way.
+ */
+interface ReportOptions {
+  today?: string;
+  fresh?: boolean;
+}
+
+/**
  * Loads the ledger and builds the model.
  *
  * `today` defaults to the app's zone rather than the server's: on Vercel the
@@ -40,14 +53,12 @@ export interface ReportSendOutcome {
  */
 export async function buildReportForPeriod(
   period: ReportPeriod,
-  options: { today?: string } = {},
+  options: ReportOptions = {},
 ): Promise<SpendingReport> {
   const today = options.today ?? todayInZone(APP_TIMEZONE);
-  const source = await getDataSource();
-  const [receipts, disbursements] = await Promise.all([
-    source.loadMergedReceipts(),
-    source.loadDisbursements(),
-  ]);
+  const { receipts, disbursements } = await loadLedgerCached({
+    fresh: options.fresh,
+  });
   return buildSpendingReport(receipts, disbursements, period, today);
 }
 
@@ -60,15 +71,13 @@ export async function buildReportForPeriod(
  */
 export async function sendSpendingReport(
   period: ReportPeriod,
-  options: { today?: string } = {},
+  options: ReportOptions = {},
 ): Promise<ReportSendOutcome> {
   try {
     const today = options.today ?? todayInZone(APP_TIMEZONE);
-    const source = await getDataSource();
-    const [receipts, disbursements] = await Promise.all([
-      source.loadMergedReceipts(),
-      source.loadDisbursements(),
-    ]);
+    const { receipts, disbursements } = await loadLedgerCached({
+      fresh: options.fresh,
+    });
     const report = buildSpendingReport(receipts, disbursements, period, today);
 
     const result = await sendSpendingReportEmail(report, {

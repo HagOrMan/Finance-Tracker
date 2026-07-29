@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { badRequest, errorResponse, parseIdParam } from "@/lib/api";
 import { requireOwnerForApi } from "@/lib/auth-server";
+import { invalidateSubscriptions } from "@/lib/data/cache";
 import { getDataSource } from "@/lib/data/source";
 import { updateSubscriptionSchema } from "@/lib/data/schemas";
 
@@ -24,6 +25,7 @@ export async function PATCH(request: Request, { params }: Context) {
   try {
     const source = await getDataSource();
     const subscription = await source.updateSubscription(id, parsed.data);
+    invalidateSubscriptions();
     return NextResponse.json(subscription);
   } catch (error) {
     return errorResponse(error, "Failed to update subscription");
@@ -58,6 +60,7 @@ export async function DELETE(_request: Request, { params }: Context) {
     }
 
     await source.deleteSubscription(id);
+    invalidateSubscriptions();
     return NextResponse.json({ ok: true, id });
   } catch (error) {
     // Includes the check-then-delete race, mapped to the same 409 by the data

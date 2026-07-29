@@ -1,9 +1,7 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
+import { useId, useMemo, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,14 +12,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RefreshButton, ResetFiltersButton } from "@/components/filter-actions";
 import { FilterShell } from "@/components/filter-shell";
-import { MultiSelect } from "@/components/multi-select";
+import { MultiSelect, type MultiSelectPreset } from "@/components/multi-select";
 import { useFiltersStore } from "@/store/filters-store";
-import {
-  useMergedReceipts,
-  useRefreshFinanceData,
-} from "@/hooks/use-finance-data";
-import type { Filters } from "@/lib/filters";
+import { useMergedReceipts } from "@/hooks/use-finance-data";
+import { commonSpendingCategories, type Filters } from "@/lib/filters";
+import { COMPARISON_EXCLUDED_CATEGORIES } from "@/lib/config";
 
 /**
  * The shared filter row.
@@ -33,18 +30,23 @@ import type { Filters } from "@/lib/filters";
  * — is identical and lives here once.
  *
  * `/disbursements` deliberately keeps its own bar. Its filter set is different
- * rather than merely reordered (date range + entities, no category, store,
- * discount or net-paid), so folding it in would mean making almost every
- * control optional, which costs more than the duplication saves.
+ * rather than merely reordered (date range + entities + refund/standalone, no
+ * category, store, discount or net-paid), so folding it in would mean making
+ * almost every control optional, which costs more than the duplication saves.
  */
 export function FilterBar({
   /** Replaces the date-range inputs. Omit for the default date-range bar. */
   leading,
+  /**
+   * Page-local filter state to clear when Reset is pressed. Only `/monthly`
+   * has any — its month selection, which the store deliberately doesn't hold.
+   */
+  onReset,
 }: {
   leading?: ReactNode;
+  onReset?: () => void;
 } = {}) {
   const { data: receipts } = useMergedReceipts();
-  const refresh = useRefreshFinanceData();
   // Unique per instance so the label still targets the right box if two bars
   // ever render at once — the pages used to hand-pick ids to avoid colliding.
   const netPaidId = useId();
@@ -67,6 +69,21 @@ export function FilterBar({
   const storeOptions = [
     ...new Set((receipts ?? []).map((r) => r.store)),
   ].sort();
+
+  // The same held-out list the weekly email uses, so "what I actually spend"
+  // means one thing in both places. See `commonSpendingCategories`.
+  const categoryPresets = useMemo<MultiSelectPreset[]>(
+    () => [
+      {
+        label: "Common spending",
+        title: `Select every category except ${COMPARISON_EXCLUDED_CATEGORIES.join(
+          ", ",
+        )} — the same ones the spending report holds out`,
+        select: commonSpendingCategories,
+      },
+    ],
+    [],
+  );
 
   // Only what's actually narrowing the view — the date range is always set and
   // "Net paid" is a display toggle, so counting either would leave the
@@ -110,6 +127,7 @@ export function FilterBar({
         options={categoryOptions}
         selected={categories}
         onChange={setCategories}
+        presets={categoryPresets}
         className="w-50 max-sm:w-full"
       />
 
@@ -140,8 +158,8 @@ export function FilterBar({
         </Select>
       </div>
 
-      {/* Toggle and refresh share a row. In the stacked mobile column that
-          reads as a footer to the filters; on desktop it's just the last two
+      {/* Toggle and the two actions share a row. In the stacked mobile column
+          that reads as a footer to the filters; on desktop it's just the last
           items of the wrap, where they sat anyway. */}
       <div className="flex items-center gap-2 pb-2 max-sm:justify-between max-sm:pb-0">
         <div className="flex items-center gap-2">
@@ -152,15 +170,10 @@ export function FilterBar({
           />
           <Label htmlFor={netPaidId}>Net paid</Label>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={refresh}
-          aria-label="Refresh data"
-        >
-          <RefreshCw className="size-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <ResetFiltersButton onReset={onReset} />
+          <RefreshButton />
+        </div>
       </div>
     </FilterShell>
   );

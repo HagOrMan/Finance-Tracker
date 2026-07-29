@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { badRequest, errorResponse } from "@/lib/api";
 import { requireOwnerForApi } from "@/lib/auth-server";
+import { invalidateDisbursements } from "@/lib/data/cache";
 import { getDataSource } from "@/lib/data/source";
 import { bulkUpdateDisbursementsSchema } from "@/lib/data/schemas";
 
@@ -27,6 +28,7 @@ export async function PATCH(request: Request) {
     const source = await getDataSource();
     const { ids, patch } = parsed.data;
     const disbursements = await source.updateDisbursements(ids, patch);
+    invalidateDisbursements();
     return NextResponse.json({
       updated: disbursements.length,
       disbursements,

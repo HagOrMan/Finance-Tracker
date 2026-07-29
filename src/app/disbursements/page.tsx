@@ -1,11 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RefreshButton, ResetFiltersButton } from "@/components/filter-actions";
 import { FilterShell } from "@/components/filter-shell";
 import { MultiSelect } from "@/components/multi-select";
 import { StatCard } from "@/components/charts/stat-card";
@@ -26,29 +25,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  useDisbursements,
-  useMergedReceipts,
-  useRefreshFinanceData,
-} from "@/hooks/use-finance-data";
+import { useDisbursements, useMergedReceipts } from "@/hooks/use-finance-data";
 import { useFiltersStore } from "@/store/filters-store";
 import { formatCurrency } from "@/lib/format";
 import { daysBetween, isoWeekStart } from "@/lib/dates";
-
-type TypeFilter = "All" | "Refund" | "Standalone";
+import {
+  matchesDisbursementType,
+  type DisbursementType,
+} from "@/lib/filters";
 
 export default function DisbursementsPage() {
   const { data: disbData, isLoading: isFetching, error } = useDisbursements();
   const { data: receiptsData } = useMergedReceipts();
-  const refresh = useRefreshFinanceData();
   const disbursements = useMemo(() => disbData ?? [], [disbData]);
   const receipts = useMemo(() => receiptsData ?? [], [receiptsData]);
 
   const startDate = useFiltersStore((s) => s.startDate);
   const endDate = useFiltersStore((s) => s.endDate);
   const entities = useFiltersStore((s) => s.entities);
+  const disbursementType = useFiltersStore((s) => s.disbursementType);
   const setDateRange = useFiltersStore((s) => s.setDateRange);
   const setEntities = useFiltersStore((s) => s.setEntities);
+  const setDisbursementType = useFiltersStore((s) => s.setDisbursementType);
   // This page has its own filter bar rather than using `useFilteredReceipts`,
   // so it folds hydration in itself: the date range above is the 30-day default
   // until the flag flips, which for this page is the whole filter.
@@ -63,9 +61,13 @@ export default function DisbursementsPage() {
   const filtered = useMemo(() => {
     return disbursements
       .filter((d) => d.date_received >= startDate && d.date_received <= endDate)
-      .filter((d) => (entities.length ? entities.includes(d.entity) : true));
-  }, [disbursements, startDate, endDate, entities]);
+      .filter((d) => (entities.length ? entities.includes(d.entity) : true))
+      .filter((d) => matchesDisbursementType(d, disbursementType));
+  }, [disbursements, startDate, endDate, entities, disbursementType]);
 
+  // Computed over `filtered`, so with the type filter set to Refund the
+  // standalone card reads $0 and vice versa. That's the honest reading of a
+  // narrowed view — the cards describe what's on screen, not the whole ledger.
   const totalReceived = filtered.reduce((s, d) => s + d.amount, 0);
   const totalRefunds = filtered
     .filter((d) => d.refunded_from_receipt != null)
@@ -102,8 +104,11 @@ export default function DisbursementsPage() {
     [receipts],
   );
 
+  // No type filter here any more — it moved up into the page filter bar, where
+  // it also scopes the stat cards and the two charts. Two "Type" selects on one
+  // page, one of which silently didn't affect the numbers above it, was the
+  // confusing half of the old arrangement.
   const [tblEntities, setTblEntities] = useState<string[]>([]);
-  const [tblType, setTblType] = useState<TypeFilter>("All");
   const [reasonSearch, setReasonSearch] = useState("");
   const [tblStores, setTblStores] = useState<string[]>([]);
   const [tblCategories, setTblCategories] = useState<string[]>([]);
@@ -145,11 +150,6 @@ export default function DisbursementsPage() {
         .filter((d) =>
           tblEntities.length ? tblEntities.includes(d.entity) : true,
         )
-        .filter((d) => {
-          if (tblType === "Refund") return d.refunded_from_receipt != null;
-          if (tblType === "Standalone") return d.refunded_from_receipt == null;
-          return true;
-        })
         .filter((d) =>
           reasonSearch
             ? (d.reason ?? "")
@@ -174,15 +174,7 @@ export default function DisbursementsPage() {
           return linked ? tblCategories.includes(linked.category) : false;
         })
         .sort((a, b) => (a.date_received < b.date_received ? 1 : -1)),
-    [
-      filtered,
-      tblEntities,
-      tblType,
-      reasonSearch,
-      tblStores,
-      tblCategories,
-      receiptById,
-    ],
+    [filtered, tblEntities, reasonSearch, tblStores, tblCategories, receiptById],
   );
 
   return (
@@ -191,7 +183,11 @@ export default function DisbursementsPage() {
         📥 Disbursements
       </h1>
 
-      <FilterShell activeCount={entities.length > 0 ? 1 : 0}>
+      <FilterShell
+        activeCount={
+          (entities.length > 0 ? 1 : 0) + (disbursementType !== "All" ? 1 : 0)
+        }
+      >
         <div className="flex flex-col gap-1">
           <Label
             className="text-xs font-medium text-muted-foreground"
@@ -223,16 +219,35 @@ export default function DisbursementsPage() {
           onChange={setEntities}
           className="w-55 max-sm:w-full"
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={refresh}
-          aria-label="Refresh data"
-          className="max-sm:self-end"
-        >
-          <RefreshCw className="size-4" />
-        </Button>
+        {/* The one axis that only exists on this page: money that came back
+            against a receipt vs money that arrived on its own. Everything
+            below reads `filtered`, so this scopes the cards and both charts,
+            not just the table. */}
+        <div className="flex flex-col gap-1">
+          <Label
+            className="text-xs font-medium text-muted-foreground"
+            htmlFor="disb-type"
+          >
+            Type
+          </Label>
+          <Select
+            value={disbursementType}
+            onValueChange={(v) => setDisbursementType(v as DisbursementType)}
+          >
+            <SelectTrigger id="disb-type" className="w-35 max-sm:w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All</SelectItem>
+              <SelectItem value="Refund">Refunds only</SelectItem>
+              <SelectItem value="Standalone">Standalone only</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2 pb-2 max-sm:justify-end max-sm:pb-0">
+          <ResetFiltersButton />
+          <RefreshButton />
+        </div>
       </FilterShell>
 
       {error && (
@@ -301,24 +316,6 @@ export default function DisbursementsPage() {
                 onChange={setTblEntities}
                 className="w-50 max-sm:w-full"
               />
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs font-medium text-muted-foreground">
-                  Type
-                </Label>
-                <Select
-                  value={tblType}
-                  onValueChange={(v) => setTblType(v as TypeFilter)}
-                >
-                  <SelectTrigger className="w-35 max-sm:w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All</SelectItem>
-                    <SelectItem value="Refund">Refund</SelectItem>
-                    <SelectItem value="Standalone">Standalone</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="flex min-w-50 flex-1 flex-col gap-1 max-sm:min-w-0 max-sm:basis-full">
                 <Label className="text-xs font-medium text-muted-foreground">
                   Search reason

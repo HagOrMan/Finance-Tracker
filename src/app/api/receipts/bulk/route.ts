@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { badRequest, errorResponse } from "@/lib/api";
 import { requireOwnerForApi } from "@/lib/auth-server";
+import { invalidateReceipts } from "@/lib/data/cache";
 import { getDataSource } from "@/lib/data/source";
 import { bulkUpdateReceiptsSchema } from "@/lib/data/schemas";
 
@@ -27,6 +28,7 @@ export async function PATCH(request: Request) {
     const source = await getDataSource();
     const { ids, patch } = parsed.data;
     const receipts = await source.updateReceipts(ids, patch);
+    invalidateReceipts();
     // `updated` can be short of `ids.length` when the client's cached list has
     // gone stale against a delete. That's information, not an error — the
     // caller decides whether a partial hit is worth surfacing.

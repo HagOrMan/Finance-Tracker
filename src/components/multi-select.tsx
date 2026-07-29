@@ -18,6 +18,22 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+/**
+ * A named selection — "everything except X", "just the ones that Y".
+ *
+ * Presets live in the popover rather than as another control in the filter bar
+ * because they *are* the selection: pressing one writes a concrete list into
+ * `selected`, visible in the same "12 selected" summary as hand-picking would
+ * be. Nothing about the filter afterwards remembers a preset was used, which is
+ * the point — there is no second, invisible rule to reason about.
+ */
+export interface MultiSelectPreset {
+  label: string;
+  title?: string;
+  /** Given every option, returns the selection to apply. */
+  select: (options: string[]) => string[];
+}
+
 interface MultiSelectProps {
   label: string;
   options: string[];
@@ -25,6 +41,7 @@ interface MultiSelectProps {
   onChange: (values: string[]) => void;
   placeholder?: string;
   className?: string;
+  presets?: MultiSelectPreset[];
 }
 
 export function MultiSelect({
@@ -34,6 +51,7 @@ export function MultiSelect({
   onChange,
   placeholder = "All",
   className,
+  presets,
 }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -161,6 +179,32 @@ export function MultiSelect({
                 </Button>
               </div>
             </div>
+            {presets && presets.length > 0 && (
+              // Its own row rather than crowding in beside Select/Deselect all:
+              // a preset name is a phrase, not a verb, and the two kinds of
+              // action read as one undifferentiated strip of buttons together.
+              // Search does not narrow a preset — it computes over every option
+              // on purpose, so "Common spending" means the same thing whether
+              // or not you happen to be typing.
+              <div
+                className="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5"
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                {presets.map((preset) => (
+                  <Button
+                    key={preset.label}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2"
+                    title={preset.title}
+                    onClick={() => onChange(preset.select(options))}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            )}
             <CommandList>
               {visible.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">

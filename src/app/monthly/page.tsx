@@ -170,6 +170,13 @@ export default function MonthlyPage() {
             className="w-65 max-sm:w-full"
           />
         }
+        // The month selection is this page's own state, so Reset has to be told
+        // about it. `null` is not "no months" — it's "fall back to the default
+        // last six", which is exactly what a reset should restore.
+        onReset={() => {
+          setSelectedMonths(null);
+          setTrendCategoryFilter([]);
+        }}
       />
 
       {error && (

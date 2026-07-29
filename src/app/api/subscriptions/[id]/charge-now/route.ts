@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { badRequest, errorResponse, parseIdParam } from "@/lib/api";
 import { requireOwnerForApi } from "@/lib/auth-server";
+import { invalidateSubscriptionCharges } from "@/lib/data/cache";
 import { chargeSubscriptionNow } from "@/lib/subscriptions-runner";
 
 type Context = { params: Promise<{ id: string }> };
@@ -24,6 +25,9 @@ export async function POST(_request: Request, { params }: Context) {
 
   try {
     const result = await chargeSubscriptionNow(id);
+    // Unconditionally, including the `alreadyCharged` path: that branch still
+    // advances `charges_generated`, so the cached subscription row is stale.
+    invalidateSubscriptionCharges();
     return NextResponse.json(result);
   } catch (error) {
     return errorResponse(error, "Failed to record the charge");

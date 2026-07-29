@@ -15,6 +15,11 @@ are live. The SQLite→Supabase backfill has run; all three migrations in
 Routes: `/` `/daily` `/monthly` `/categories` `/savings` `/disbursements`
 `/reports` · `/stores` `/manage` `/subscriptions` behind the "Manage ▾" menu.
 
+**Reads are cached server-side** as of the caching pass: `src/lib/data/cache.ts`
+puts Next's tagged Data Cache in front of every list read, write routes
+invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
+§3.1 — in particular the rule that every write route must call `invalidate*()`.
+
 ## Open
 
 1. **Read one cron firing's run JSON** in the Vercel function logs. On a
@@ -37,6 +42,14 @@ Routes: `/` `/daily` `/monthly` `/categories` `/savings` `/disbursements`
 5. **TypeScript is pinned to 5.x and ESLint to 9.x**, not the newest majors —
    `typescript-eslint` and `eslint-config-next` peer ranges hadn't caught up.
    Revisit when they have.
+6. **Watch one Supabase egress figure after the caching pass.** The Data Cache
+   should have collapsed most page loads to zero Supabase queries; the free
+   tier's 5 GB/month was never close, but the number is now the way to tell the
+   invalidation is firing rather than the one-hour backstop doing all the work.
+7. **Vercel's Data Cache drops entries over ~2 MB.** Well beyond the current
+   ledger, and it degrades to the old behaviour (a Supabase query per load)
+   rather than breaking. Worth knowing before wondering why the cache
+   "stopped working" years from now.
 
 ## Settled
 

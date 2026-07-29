@@ -39,8 +39,10 @@ import { deleteSequentially } from "@/lib/bulk-delete";
 import { buildEntityGroups } from "@/lib/entities";
 import { formatCurrency } from "@/lib/format";
 import type { Disbursement, MergedReceipt } from "@/lib/data/types";
-
-type TypeFilter = "All" | "Refund" | "Standalone";
+import {
+  matchesDisbursementType,
+  type DisbursementType,
+} from "@/lib/filters";
 
 /**
  * The disbursements table, shaped like `receipts-table.tsx` — same
@@ -67,7 +69,7 @@ export function DisbursementsTable({
   selectable?: boolean;
 }) {
   const [entities, setEntities] = useState<string[]>([]);
-  const [type, setType] = useState<TypeFilter>("All");
+  const [type, setType] = useState<DisbursementType>("All");
   const [reasonSearch, setReasonSearch] = useState("");
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -95,11 +97,7 @@ export function DisbursementsTable({
     () =>
       disbursements
         .filter((d) => (entities.length ? entities.includes(d.entity) : true))
-        .filter((d) => {
-          if (type === "Refund") return d.refunded_from_receipt != null;
-          if (type === "Standalone") return d.refunded_from_receipt == null;
-          return true;
-        })
+        .filter((d) => matchesDisbursementType(d, type))
         .filter((d) =>
           reasonSearch
             ? (d.reason ?? "")
@@ -203,7 +201,7 @@ export function DisbursementsTable({
           <Label className="text-xs font-medium text-muted-foreground">
             Type
           </Label>
-          <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
+          <Select value={type} onValueChange={(v) => setType(v as DisbursementType)}>
             <SelectTrigger className="w-35 max-sm:w-full">
               <SelectValue />
             </SelectTrigger>

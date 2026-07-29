@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/lib/api";
 import { requireOwnerForApi } from "@/lib/auth-server";
+import { invalidateSubscriptionCharges } from "@/lib/data/cache";
 import { sendSubscriptionRunEmail } from "@/lib/email";
 import { runDueSubscriptionCharges } from "@/lib/subscriptions-runner";
 
@@ -31,6 +32,9 @@ export async function POST() {
 
   try {
     const result = await runDueSubscriptionCharges();
+    // Unconditionally, even on a no-op run: `skipped` rows still advanced the
+    // counter, and a run that inserted nothing costs one wasted cache miss.
+    invalidateSubscriptionCharges();
     // Insert first, email after — and the send swallows its own failures, so a
     // Resend outage can never affect receipts that are already correct.
     await sendSubscriptionRunEmail(result);

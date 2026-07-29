@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 
 import type {
   Disbursement,
@@ -90,12 +95,53 @@ const deleteJSON = <T,>(url: string) => request<T>(url, { method: "DELETE" });
 const RECEIPTS_KEY = ["merged-receipts"];
 const DISBURSEMENTS_KEY = ["disbursements"];
 const SUBSCRIPTIONS_KEY = ["subscriptions"];
+// Prefix, not a full key — matches every period's report at once.
+const REPORTS_KEY_PREFIX = ["report"];
+
+// No per-query `staleTime` anywhere in this file on purpose: the window is a
+// single decision and it lives in `src/components/providers.tsx`, next to the
+// reasoning for it.
+
+// ---------------------------------------------------------------------------
+// What each table invalidates
+//
+// Named once so a mutation can't half-remember the fan-out. The non-obvious
+// edges, both of which used to be open-coded at every call site:
+//
+// - **Reports depend on both tables.** They are built server-side, so they
+//   can't be recomputed from the caches above and have to be refetched. Since
+//   `staleTime` went from 60s to 5 minutes, "it'll catch up shortly" stopped
+//   being true.
+// - **Disbursements move receipt numbers.** A refund's amount is what makes
+//   `actual_price` differ from `price`, so every net-paid figure in the app
+//   changes when one is written.
+// ---------------------------------------------------------------------------
+
+function invalidateReceipts(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
+  queryClient.invalidateQueries({ queryKey: REPORTS_KEY_PREFIX });
+}
+
+function invalidateDisbursements(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: DISBURSEMENTS_KEY });
+  queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
+  queryClient.invalidateQueries({ queryKey: REPORTS_KEY_PREFIX });
+}
+
+function invalidateSubscriptions(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
+}
+
+/** A generated charge is a receipt, and it advances the counter on the sub. */
+function invalidateSubscriptionCharges(queryClient: QueryClient): void {
+  invalidateSubscriptions(queryClient);
+  invalidateReceipts(queryClient);
+}
 
 export function useMergedReceipts() {
   return useQuery({
     queryKey: RECEIPTS_KEY,
     queryFn: () => fetchJSON<MergedReceipt[]>("/api/receipts"),
-    staleTime: 60_000,
   });
 }
 
@@ -103,26 +149,54 @@ export function useDisbursements() {
   return useQuery({
     queryKey: DISBURSEMENTS_KEY,
     queryFn: () => fetchJSON<Disbursement[]>("/api/disbursements"),
-    staleTime: 60_000,
   });
 }
 
-// Mirrors the old app's "🔄 Refresh" button: clears cached data and refetches.
+/**
+ * The "Refresh data" button — the app's only *manual* read path.
+ *
+ * It is deliberately not `invalidateQueries`. There are now two caches, and
+ * invalidating the browser's would just refetch the same rows out of the
+ * server's Data Cache: a refresh button that provably does nothing. `?fresh=1`
+ * makes the handler read Postgres and drop the server entry, so one press
+ * genuinely re-reads the ledger — for every other tab and device too.
+ *
+ * That makes it the expensive path, which is the right shape: it exists for the
+ * rare case where the database was changed from outside this app (the Supabase
+ * dashboard, a psql session), and nothing else can know that happened.
+ */
 export function useRefreshFinanceData() {
   const queryClient = useQueryClient();
-  return () => {
-    queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    queryClient.invalidateQueries({ queryKey: DISBURSEMENTS_KEY });
-  };
+  const { mutate, isPending } = useMutation({
+    mutationFn: async () => {
+      const [receipts, disbursements, subscriptions] = await Promise.all([
+        fetchJSON<MergedReceipt[]>("/api/receipts?fresh=1"),
+        fetchJSON<Disbursement[]>("/api/disbursements?fresh=1"),
+        fetchJSON<Subscription[]>("/api/subscriptions?fresh=1"),
+      ]);
+      return { receipts, disbursements, subscriptions };
+    },
+    // Seeded rather than invalidated: the fetches above already returned the
+    // authoritative rows, so re-requesting them would be a second round trip
+    // for an answer we're holding.
+    onSuccess: ({ receipts, disbursements, subscriptions }) => {
+      queryClient.setQueryData(RECEIPTS_KEY, receipts);
+      queryClient.setQueryData(DISBURSEMENTS_KEY, disbursements);
+      queryClient.setQueryData(SUBSCRIPTIONS_KEY, subscriptions);
+      // Reports are built server-side from the rows above and can't be seeded
+      // from them; the `fresh=1` reads dropped the server entries those are
+      // derived from, so a plain invalidate now rebuilds them correctly.
+      queryClient.invalidateQueries({ queryKey: REPORTS_KEY_PREFIX });
+    },
+  });
+  return { refresh: mutate, isRefreshing: isPending };
 }
 
 export function useAddReceipt() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: NewReceiptInput) => postJSON<Receipt>("/api/receipts", input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateReceipts(queryClient),
   });
 }
 
@@ -131,11 +205,7 @@ export function useAddDisbursement() {
   return useMutation({
     mutationFn: (input: NewDisbursementInput) =>
       postJSON<Disbursement>("/api/disbursements", input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: DISBURSEMENTS_KEY });
-      // A refund disbursement changes the linked receipt's actual_price.
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateDisbursements(queryClient),
   });
 }
 
@@ -152,9 +222,7 @@ export function useUpdateReceipt() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: number; patch: UpdateReceiptInput }) =>
       patchJSON<Receipt>(`/api/receipts/${id}`, patch),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateReceipts(queryClient),
   });
 }
 
@@ -166,9 +234,7 @@ export function useBulkUpdateReceipts() {
         "/api/receipts/bulk",
         { ids, patch },
       ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateReceipts(queryClient),
   });
 }
 
@@ -177,15 +243,9 @@ export function useDeleteReceipt() {
   return useMutation({
     mutationFn: (id: number) =>
       deleteJSON<{ ok: true; id: number }>(`/api/receipts/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateReceipts(queryClient),
   });
 }
-
-// Disbursement mutations invalidate BOTH keys: a refund's amount feeds
-// `actual_price` through mergeReceipts, so changing one silently changes every
-// net-paid figure in the app.
 
 export function useUpdateDisbursement() {
   const queryClient = useQueryClient();
@@ -197,10 +257,7 @@ export function useUpdateDisbursement() {
       id: number;
       patch: UpdateDisbursementInput;
     }) => patchJSON<Disbursement>(`/api/disbursements/${id}`, patch),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: DISBURSEMENTS_KEY });
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateDisbursements(queryClient),
   });
 }
 
@@ -218,10 +275,7 @@ export function useBulkUpdateDisbursements() {
         "/api/disbursements/bulk",
         { ids, patch },
       ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: DISBURSEMENTS_KEY });
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateDisbursements(queryClient),
   });
 }
 
@@ -230,26 +284,22 @@ export function useDeleteDisbursement() {
   return useMutation({
     mutationFn: (id: number) =>
       deleteJSON<{ ok: true; id: number }>(`/api/disbursements/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: DISBURSEMENTS_KEY });
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateDisbursements(queryClient),
   });
 }
 
 // ---------------------------------------------------------------------------
 // Subscriptions (ARCHITECTURE.md Phase 3)
 //
-// Anything that can *generate a charge* invalidates RECEIPTS_KEY as well as
-// SUBSCRIPTIONS_KEY — a generated charge is a receipt, and every total in the
-// app reads receipts. Edits that only touch the schedule don't need to.
+// Anything that can *generate a charge* uses
+// `invalidateSubscriptionCharges` — a generated charge is a receipt, and every
+// total in the app reads receipts. Edits that only touch the schedule don't.
 // ---------------------------------------------------------------------------
 
 export function useSubscriptions() {
   return useQuery({
     queryKey: SUBSCRIPTIONS_KEY,
     queryFn: () => fetchJSON<Subscription[]>("/api/subscriptions"),
-    staleTime: 60_000,
   });
 }
 
@@ -258,9 +308,7 @@ export function useAddSubscription() {
   return useMutation({
     mutationFn: (input: NewSubscriptionInput) =>
       postJSON<Subscription>("/api/subscriptions", input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
-    },
+    onSuccess: () => invalidateSubscriptions(queryClient),
   });
 }
 
@@ -274,9 +322,7 @@ export function useUpdateSubscription() {
       id: number;
       patch: UpdateSubscriptionInput;
     }) => patchJSON<Subscription>(`/api/subscriptions/${id}`, patch),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
-    },
+    onSuccess: () => invalidateSubscriptions(queryClient),
   });
 }
 
@@ -285,9 +331,7 @@ export function useDeleteSubscription() {
   return useMutation({
     mutationFn: (id: number) =>
       deleteJSON<{ ok: true; id: number }>(`/api/subscriptions/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
-    },
+    onSuccess: () => invalidateSubscriptions(queryClient),
   });
 }
 
@@ -300,10 +344,7 @@ export function useChargeSubscriptionNow() {
         date: string;
         alreadyCharged: boolean;
       }>(`/api/subscriptions/${id}/charge-now`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateSubscriptionCharges(queryClient),
   });
 }
 
@@ -312,10 +353,7 @@ export function useRunDueCharges() {
   return useMutation({
     mutationFn: () =>
       postJSON<SubscriptionRunResult>("/api/subscriptions/run-due", {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_KEY });
-      queryClient.invalidateQueries({ queryKey: RECEIPTS_KEY });
-    },
+    onSuccess: () => invalidateSubscriptionCharges(queryClient),
   });
 }
 
@@ -329,13 +367,12 @@ export function useRunDueCharges() {
 // window boundary. See ARCHITECTURE.md.
 // ---------------------------------------------------------------------------
 
-const REPORT_KEY = (period: ReportPeriod) => ["report", period];
+const REPORT_KEY = (period: ReportPeriod) => [...REPORTS_KEY_PREFIX, period];
 
 export function useSpendingReport(period: ReportPeriod) {
   return useQuery({
     queryKey: REPORT_KEY(period),
     queryFn: () => fetchJSON<SpendingReport>(`/api/reports?period=${period}`),
-    staleTime: 60_000,
     // Keeps the previous period's report on screen while the next one loads,
     // so switching tabs doesn't flash the whole page back to a skeleton.
     placeholderData: (previous) => previous,

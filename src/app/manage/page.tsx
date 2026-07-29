@@ -1,17 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { RefreshCw } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DisbursementsTable } from "@/components/disbursements-table";
+import { RefreshButton } from "@/components/filter-actions";
 import { ReceiptsTable } from "@/components/receipts-table";
-import {
-  useDisbursements,
-  useMergedReceipts,
-  useRefreshFinanceData,
-} from "@/hooks/use-finance-data";
+import { useDisbursements, useMergedReceipts } from "@/hooks/use-finance-data";
 
 /**
  * The CRUD tables (ARCHITECTURE.md). Deliberately thin: Phase 0 built the write
@@ -38,7 +33,6 @@ export default function ManagePage() {
   } = useMergedReceipts();
   const { data: disbursementsData, error: disbursementsError } =
     useDisbursements();
-  const refresh = useRefreshFinanceData();
 
   const receipts = useMemo(() => receiptsData ?? [], [receiptsData]);
   const disbursements = useMemo(
@@ -53,15 +47,7 @@ export default function ManagePage() {
         <h1 className="text-2xl font-semibold text-foreground">
           🗃️ Receipts &amp; disbursements
         </h1>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={refresh}
-          aria-label="Refresh data"
-        >
-          <RefreshCw className="size-4" />
-        </Button>
+        <RefreshButton />
       </div>
 
       {error && (

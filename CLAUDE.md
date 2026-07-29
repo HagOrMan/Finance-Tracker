@@ -83,6 +83,13 @@ checkable by hand.
 - **The data layer is the only place that touches Supabase or SQLite.** No
   inline `supabase.from(...)` in components; no `better-sqlite3` outside
   `sqlite-source.ts`.
+- **Every write route calls the matching `invalidate*()` from
+  `src/lib/data/cache.ts` before responding.** Reads are served from Next's
+  tagged Data Cache with a one-hour backstop, so a route that forgets serves
+  stale rows for an hour — and the Refresh button can't fix it, because that
+  only clears the browser's cache. Read-only list endpoints use the
+  `load*Cached` helpers; **anything that writes, or reads in order to decide a
+  write, keeps calling `getDataSource()` directly.** See `ARCHITECTURE.md` §3.1.
 - **Dates are plain `"YYYY-MM-DD"` strings** — never `new Date("YYYY-MM-DD")`
   for display or comparison.
 - **`src/lib/colors.ts` is the only source of category colour.** Same category,

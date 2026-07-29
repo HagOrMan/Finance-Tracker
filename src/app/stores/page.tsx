@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -19,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CategoryMixBar } from "@/components/category-mix-bar";
+import { RefreshButton } from "@/components/filter-actions";
 import { EntityDetailModal } from "@/components/entity-detail-modal";
 import { StoreDetailModal } from "@/components/store-detail-modal";
 import {
@@ -31,7 +31,6 @@ import {
   useBulkUpdateReceipts,
   useDisbursements,
   useMergedReceipts,
-  useRefreshFinanceData,
 } from "@/hooks/use-finance-data";
 import type { Disbursement, MergedReceipt } from "@/lib/data/types";
 import {
@@ -70,7 +69,6 @@ export default function StoresPage() {
   } = useMergedReceipts();
   const { data: disbursementsData, error: disbursementsError } =
     useDisbursements();
-  const refresh = useRefreshFinanceData();
 
   const receipts = useMemo(() => receiptsData ?? [], [receiptsData]);
   const disbursements = useMemo(
@@ -83,15 +81,7 @@ export default function StoresPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-foreground">🏪 Stores</h1>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={refresh}
-          aria-label="Refresh data"
-        >
-          <RefreshCw className="size-4" />
-        </Button>
+        <RefreshButton />
       </div>
 
       {error && (

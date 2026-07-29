@@ -84,6 +84,39 @@ than unavailable.
 strips unknown keys, and that is the entire mechanism keeping `id`,
 `created_at`, `updated_at` and `subscription_id` unpatchable.
 
+### 3.1 Caching — two layers, one rule
+
+Reads pass through **two** caches, and the rule for both is the same:
+correctness comes from *invalidation on write*, never from a short expiry.
+Nothing but this app writes the ledger, so nothing can go stale behind its back.
+
+| | Where | Lives for | Invalidated by |
+|---|---|---|---|
+| **Server** | `src/lib/data/cache.ts` (Next Data Cache, tagged) | 1 h backstop | `invalidate*()` in the write route |
+| **Browser** | TanStack Query (`src/components/providers.tsx`) | 5 min stale / 30 min gc | `onSuccess` in the mutation hook |
+
+Consequences worth knowing:
+
+- **Reads that only display go through `src/lib/data/cache.ts`. Anything that
+  writes — or decides a write — keeps calling `getDataSource()` directly.** The
+  subscription runner, the delete guards and the bulk updates all read
+  uncached, because a writer acting on a stale price cannot be fixed by
+  invalidating afterwards.
+- **Every write route calls the matching `invalidate*()` before responding.**
+  There is no decorator enforcing it; a route that forgets serves stale rows
+  for up to an hour. `CLAUDE.md` states this as a hard rule for the same reason.
+- **`?fresh=1` bypasses the server cache and drops the entry**, and is used by
+  exactly one caller: the Refresh button. Without it a refresh would clear only
+  the browser cache and be handed the same server-cached payload back.
+- **Refetch-on-window-focus is off.** It was the largest source of redundant
+  Supabase reads — an alt-tab back into the app re-read the whole ledger — and
+  it can only ever find changes this app didn't make.
+- **Receipts and disbursements are two cache entries, merged per request.**
+  Caching the merged result instead would mean every disbursement edit also
+  threw away the receipts. Reports read the same two entries via
+  `loadLedgerCached`, which is what took a report request from three Supabase
+  queries to zero.
+
 ---
 
 ## 4. Conventions
@@ -105,7 +138,20 @@ strips unknown keys, and that is the entire mechanism keeping `id`,
 - **Savings:** `price` is post-discount, so
   `savings = discount + price × pct / (100 - pct)`, guarded at `pct = 100`.
 - **Filters** live in a Zustand store persisted to `localStorage`, so they
-  survive navigation. Default range is the last 30 days.
+  survive navigation. Default range is the last 30 days. `resetFilters()`
+  restores *every* filter, not just the current page's — they are one shared
+  object, and a per-page reset would leave another page still narrowed while
+  its bar claimed otherwise.
+- **Reset filters and Refresh data are different buttons and must stay visibly
+  different** (`src/components/filter-actions.tsx`). Reset changes what you are
+  looking at and touches no data; Refresh changes what the app knows and
+  touches no filters. Reset is labelled and filter-shaped, Refresh is the
+  circular arrow that spins while it works.
+- **Category presets write a concrete selection**, they are not a live rule.
+  "Common spending" (`commonSpendingCategories`) selects everything except the
+  report's `COMPARISON_EXCLUDED_CATEGORIES`, reusing `isExcludedCategory` so
+  "same as the email" is true by construction. A category added later is not
+  swept in silently — press the preset again.
 - `/stores`, `/manage` and `/reports` deliberately have **no `FilterBar`** — the
   first two are lenses over the whole ledger (a 30-day default would hide the
   two-year-old mis-filed receipt you came for), and a report's window is defined
@@ -127,6 +173,12 @@ strips unknown keys, and that is the entire mechanism keeping `id`,
   endpoint **sequentially**, and failures stay selected afterwards.
 - Editing a disbursement is the more dangerous of the two edits: `amount` and
   `refunded_from_receipt` feed `actual_price` everywhere.
+- **Refund vs standalone is a page-level filter on `/disbursements`**, in the
+  bar rather than over the table, so it scopes the stat cards and both charts
+  too. The predicate is `refunded_from_receipt != null` — the same one
+  `mergeReceipts` uses, not a separate "kind" column that could disagree. With
+  it set, the "Refunds" and "Standalone income" cards read $0 for the excluded
+  side; the cards describe what's on screen, not the whole ledger.
 
 ### Charts
 

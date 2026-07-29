@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { badRequest, errorResponse, parseIdParam } from "@/lib/api";
 import { requireOwnerForApi } from "@/lib/auth-server";
+import { invalidateReceipts } from "@/lib/data/cache";
 import { getDataSource } from "@/lib/data/source";
 import { updateReceiptSchema } from "@/lib/data/schemas";
 
@@ -27,6 +28,7 @@ export async function PATCH(request: Request, { params }: Context) {
     // whole reason `id`, `created_at`, `updated_at` and `subscription_id`
     // cannot be patched from outside. Spreading the raw body would undo it.
     const receipt = await source.updateReceipt(id, parsed.data);
+    invalidateReceipts();
     return NextResponse.json(receipt);
   } catch (error) {
     return errorResponse(error, "Failed to update receipt");
@@ -59,6 +61,7 @@ export async function DELETE(_request: Request, { params }: Context) {
     }
 
     await source.deleteReceipt(id);
+    invalidateReceipts();
     return NextResponse.json({ ok: true, id });
   } catch (error) {
     // Includes the check-then-delete race: the data layer maps Postgres 23503
