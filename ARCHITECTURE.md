@@ -68,6 +68,42 @@ the schedule would silently never fire.
 only through `service.ts`, which is `server-only`, so a client-component import
 is a build error rather than a leaked key.
 
+### 2.1 Refresh-token rotation is deliberately OFF
+
+**This lives in the Supabase dashboard, not in this repo** — Auth → Sessions →
+Refresh Tokens → *"Detect and revoke potentially compromised refresh tokens"*.
+Nothing here enforces it and no amount of grepping will find it, which is why it
+is written down: if unexplained forced sign-ins ever return, check that toggle
+before anything else.
+
+With rotation on, every refresh mints a new refresh token and revokes the old
+one. That is only safe if the response carrying the new token actually reaches
+the browser. On the deployed site it frequently didn't — a laptop sleeping
+mid-request, a phone backgrounding the tab, a dropped mobile connection — and
+the browser was left holding a token the Auth server had already retired. The
+next visit failed with `refresh_token_not_found` and a forced sign-in, roughly
+every day or two.
+
+The tell was that it **never once happened on localhost**: one process, no
+latency, responses always arrive. A session bug would not care where it runs.
+(Relatedly, the single-flight in `src/lib/supabase/middleware.ts` genuinely
+dedupes locally and is only best-effort on Vercel, where the proxy spans
+instances.)
+
+What rotation buys is *detecting a stolen refresh token*. Weighed against a
+single-user app with Google-only sign-in, an `OWNER_USER_IDS` allowlist and no
+third-party scripts, the reliability cost was not worth it. Two things back that
+up:
+
+- `signOut()` keeps supabase-js's default `scope: "global"`, revoking every
+  refresh token on every device. That default is **kept on purpose** — it is the
+  kill switch if compromise is ever suspected. It also means signing out on one
+  device signs out the others, which is a real cost, accepted for that reason.
+- Both places that check a session now report failures through
+  `logAuthFailure()` (`src/lib/supabase/auth-log.ts`) instead of silently
+  treating "the check failed" as "signed out". Grep the function logs for
+  `[auth]`.
+
 ---
 
 ## 3. Data layer
