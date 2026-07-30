@@ -43,10 +43,22 @@ export const createClient = cache(async () => {
               cookieStore.set(name, value, options),
             );
           } catch {
-            // Server Components may not mutate cookies. Without this swallow,
-            // any Server Component that happens to trigger a token refresh
-            // throws mid-render; middleware persists the refreshed session on
-            // the next request instead.
+            // Server Components may not mutate cookies, so this write cannot
+            // land. The swallow has to stay — without it any Server Component
+            // that happens to trigger a token refresh throws mid-render.
+            //
+            // What it costs, stated plainly because it used to say the proxy
+            // recovered this and **it does not**: if the refresh *rotated* the
+            // token, the replacement is discarded here while the Auth server
+            // has already revoked the old one. The browser keeps the dead
+            // token, and the proxy can't help — it only ever sees what the
+            // browser sends. That is one route to a forced re-login
+            // (PROGRESS.md item 8).
+            //
+            // Rarely fires in practice, and that is by design rather than by
+            // luck: the proxy runs `getUser()` first on every request, so by
+            // the time a Server Component renders, the token is normally
+            // already fresh and nothing here needs writing.
           }
         },
       },

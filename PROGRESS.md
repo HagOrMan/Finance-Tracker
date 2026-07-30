@@ -50,16 +50,66 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
    ledger, and it degrades to the old behaviour (a Supabase query per load)
    rather than breaking. Worth knowing before wondering why the cache
    "stopped working" years from now.
-8. **Signing in on a second device ends the session on the first.** Nothing in
-   this repo does that — each device runs its own PKCE exchange and gets its own
-   row in `auth.sessions`, and multi-device is Supabase's default. Check the
-   dashboard: Authentication → Sessions → "Enforce single session per user",
-   plus the time-box and inactivity timeouts beside it. Those settings are
-   **project-wide**, and the project is shared with the user's other apps, so
-   one of them may have turned it on. Separate but adjacent: `signOut()` in
-   `src/lib/supabase/actions.ts` takes supabase-js's default `scope: "global"`,
-   which revokes *every* device's refresh token — signing out on the laptop
-   really does sign the phone out. `{ scope: "local" }` if that's unwanted.
+8. **Forced re-logins every day or two, on both phone and laptop.** Not Supabase
+   ending the session — `auth.sessions` says the opposite. Nothing is ever
+   terminated (terminated sessions are *deleted*, and no row has ever vanished),
+   token chains show plain healthy rotation (N tokens, N−1 revoked), and the
+   laptop was forced to re-auth while its own session sat there alive and
+   un-revoked. Sessions accumulate because each forced login abandons a live one
+   instead of replacing it. So **the browser is losing the cookie**, not the
+   server ending the session — which also rules out the reuse-detection theory,
+   since that revokes only the one session anyway, never a sibling device.
+   - Two dead ends, recorded so they aren't re-walked: "Enforce single session
+     per user" is **off**, and `auth.sessions.user_agent` / `.ip` are the Node
+     runtime's and Vercel's, not the browser's — the session is created
+     server-side by `exchangeCodeForSession`, so those columns **cannot tell
+     devices apart** here.
+   - **The observed error is `Invalid Refresh Token: Refresh Token Not Found`**,
+     and it is the deduction that matters. GoTrue distinguishes it from
+     `Already Used`: the latter means the token exists, is revoked, and reuse
+     detection fired — which *terminates the session and deletes the row*.
+     `Not Found` means GoTrue has no record of the token, so there is no session
+     to terminate, which is the only refresh failure that leaves a row alive,
+     un-revoked and orphaned. That is exactly the observed shape. **Reuse
+     detection and the whole concurrent-refresh-race family are ruled out** —
+     they all surface as `Already Used`. The browser is presenting a refresh
+     token the server has never heard of.
+   - **Cookie chunking is not the cause** (demoted from leading theory). A
+     mis-reassembled cookie fails base64/JSON parsing and reads as *no session*,
+     which never reaches the token endpoint at all — it cannot produce this
+     error. The cookie is still chunked (`.0` 3216 B + `.1` 1719 B), and it will
+     stay that way: measured payload is `user` 1734 B, `access_token` 1384 B,
+     `provider_token` 255 B, `provider_refresh_token` 105 B, `refresh_token`
+     14 B. Unchunking needs ~1.3 KB shed and only the first two are big enough,
+     so it isn't reachable.
+   - **Resolved: dropping `access_type: "offline"` is not a fix.** It removes
+     360 raw bytes (~480 encoded) of a ~4.9 KB cookie — nowhere near a chunk
+     boundary. Still defensible as tidy-up (nothing reads the provider tokens,
+     no Google API is ever called, and `@supabase/ssr` sets `httpOnly: false`
+     so a Google refresh token currently sits in a JS-readable cookie) but it
+     buys nothing for the logouts.
+   - **Done:** both discarded-error blind spots now report through
+     `logAuthFailure()` in `src/lib/supabase/auth-log.ts` — the proxy, and
+     `getSessionUser()`, which is the gate on every page and route handler.
+     Grep the Vercel function logs for `[auth]`. Separately, the swallowed
+     cookie write in `src/lib/supabase/server.ts` is a real route *into* this
+     bug and its comment used to claim the proxy recovered it. The comment is
+     now honest; the swallow itself still has to stay.
+   - **There is no "Advanced" auth section** — the knobs live under Auth →
+     Sessions → Refresh Tokens. "Detect and revoke potentially compromised
+     refresh tokens" is the rotation switch despite the security-flavoured
+     label: off means the same refresh token keeps working, and the failure
+     chain above cannot start. "Refresh token reuse interval" is a seconds-wide
+     grace window and is useless here — the gap in this bug is days.
+   - The other lever is the **access-token (JWT) expiry**, 3600 s by default.
+     Cutting the number of refreshes cuts the exposure proportionally, and it
+     costs less in this app than in most: every check goes through `getUser()`
+     against the Auth server rather than trusting the JWT locally, so a longer
+     JWT does not blunt the `OWNER_USER_IDS` gate.
+   - Separate but adjacent: `signOut()` in `src/lib/supabase/actions.ts` takes
+     supabase-js's default `scope: "global"`, which revokes *every* device's
+     refresh token — signing out on the laptop really does sign the phone out.
+     `{ scope: "local" }` if that's unwanted.
 
 ## Settled
 

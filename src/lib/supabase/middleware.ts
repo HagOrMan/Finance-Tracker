@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import type { User } from "@supabase/supabase-js";
+import type { AuthError, User } from "@supabase/supabase-js";
 
 import { isOwnerUserId } from "@/lib/auth";
 import { requireEnv } from "@/lib/env";
+import { logAuthFailure } from "@/lib/supabase/auth-log";
 
 // Deny by default: this lists what is public, so a new route is protected the
 // moment it exists. /login must stay public for the not-yet-authorized case
@@ -25,6 +26,10 @@ function isPublicPath(pathname: string): boolean {
 }
 
 type CookieWrite = { name: string; value: string; options: CookieOptions };
+
+// `sb-<project-ref>-auth-token`, plus the `.0` / `.1` … chunks @supabase/ssr
+// splits it into once the serialized session passes ~3.2 KB.
+const AUTH_COOKIE_RE = /^sb-.+-auth-token(\.\d+)?$/;
 
 /**
  * Process-wide single-flight for the getUser() call below, keyed by the
@@ -56,6 +61,40 @@ const inFlightByCookieKey = new Map<
   }>
 >();
 
+/**
+ * The proxy's two signals, on top of the shared format in `auth-log.ts`.
+ *
+ * - **An error while the browser was holding auth cookies.** Cookies but no
+ *   user is the interesting case; no cookies at all is just a logged-out
+ *   visitor, filtered here by the cookie count.
+ * - **A `maxAge: 0` write.** That is @supabase/ssr *deleting* the session
+ *   cookie — the exact instant a working login stops working — and it can
+ *   happen without `getUser()` reporting an error at all, so it is checked
+ *   independently.
+ *
+ * Only the request that wins the single flight below logs, so a burst of
+ * concurrent requests sharing one cookie snapshot produces one line, not six.
+ */
+function logFailedCheck(
+  request: NextRequest,
+  authCookies: { name: string; value: string }[],
+  cookieWrites: CookieWrite[],
+  error: AuthError | null,
+) {
+  const cleared = cookieWrites
+    .filter((w) => w.options?.maxAge === 0)
+    .map((w) => w.name);
+
+  if (authCookies.length === 0) return;
+  if (!error && cleared.length === 0) return;
+
+  logAuthFailure("proxy", error, {
+    path: request.nextUrl.pathname,
+    cookies: authCookies.map((c) => `${c.name}=${c.value.length}B`),
+    cleared,
+  });
+}
+
 async function getUserSingleFlight(request: NextRequest) {
   const key = request.headers.get("cookie") ?? "";
   const existing = inFlightByCookieKey.get(key);
@@ -67,6 +106,12 @@ async function getUserSingleFlight(request: NextRequest) {
     // response carrying refreshed auth cookies — without them a CDN or edge
     // cache can hand one visitor's session token to another.
     let noStoreHeaders: Record<string, string> = {};
+
+    // Captured before the call, because a failed check is exactly when
+    // @supabase/ssr deletes these — afterwards there is nothing left to report.
+    const authCookies = request.cookies
+      .getAll()
+      .filter((c) => AUTH_COOKIE_RE.test(c.name));
 
     const supabase = createServerClient(
       requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
@@ -89,7 +134,10 @@ async function getUserSingleFlight(request: NextRequest) {
     // cookie. Removing this call silently expires sessions.
     const {
       data: { user },
+      error,
     } = await supabase.auth.getUser();
+
+    logFailedCheck(request, authCookies, cookieWrites, error);
 
     return { user, cookieWrites, noStoreHeaders };
   })();

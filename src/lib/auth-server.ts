@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 
 import { isOwnerUserId } from "@/lib/auth";
+import { isSessionMissing, logAuthFailure } from "@/lib/supabase/auth-log";
 import { createClient } from "@/lib/supabase/server";
 
 import "server-only";
@@ -16,7 +17,16 @@ export async function getSessionUser(): Promise<User | null> {
   const supabase = await createClient();
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  // Every caller below turns a null user into a bounce — /login, or a 401. When
+  // the cause was a *failed check* rather than an absent session, that bounce
+  // signs out a session that was still valid, and without this it left no trace
+  // at all. `isSessionMissing` filters the ordinary signed-out visitor, who
+  // would otherwise log a line on every unauthenticated page view.
+  if (error && !isSessionMissing(error)) logAuthFailure("getSessionUser", error);
+
   return user;
 }
 
