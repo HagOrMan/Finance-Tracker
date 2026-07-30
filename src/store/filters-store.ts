@@ -93,12 +93,24 @@ export const useFiltersStore = create<FiltersState>()(
       // different on the client. FiltersHydrator (in the root layout) calls
       // `.persist.rehydrate()` once, client-side, after mount instead.
       skipHydration: true,
-      // Only the filters themselves. Without this, `hasHydrated: false` would
-      // be written to storage and then merged back in *over* the true value on
-      // the next rehydrate — the flag would fight the thing it reports on.
+      /**
+       * What survives a reload — deliberately **not the date range**.
+       *
+       * Every other filter answers "what am I interested in", which doesn't
+       * change between visits. The dates answer "how recent", and the answer is
+       * almost always "up to now": a persisted `endDate` is a snapshot of
+       * whenever you last opened the app, so coming back next week silently
+       * hides the week you came back to see. Left out, the store's initial state
+       * — `defaultFilters`, a trailing window ending today — stands on every
+       * load, which is also what the presets and the Reset button mean by a date
+       * range. Changing them still sticks while the tab is open; it just doesn't
+       * outlive it.
+       *
+       * `hasHydrated` is excluded for a different reason: written here it would
+       * be merged back in *over* the true value on the next rehydrate, and the
+       * flag would fight the thing it reports on.
+       */
       partialize: (s) => ({
-        startDate: s.startDate,
-        endDate: s.endDate,
         categories: s.categories,
         stores: s.stores,
         entities: s.entities,
@@ -106,6 +118,23 @@ export const useFiltersStore = create<FiltersState>()(
         hasDiscount: s.hasDiscount,
         subtractRefunds: s.subtractRefunds,
       }),
+      /**
+       * The reading half of the rule above, and the half that actually enforces
+       * it. `partialize` only stops the dates being *written*; every browser
+       * that used the app before this change still has a stored `endDate` in
+       * localStorage, and zustand's default merge is a shallow spread that would
+       * put it straight back. Dropping the keys here means a stale entry decays
+       * on its own — first load ignores the dates, and the next write drops them
+       * from storage for good.
+       */
+      merge: (persisted, current) => {
+        // Spreading null/undefined is legal and yields {}, so this covers an
+        // empty or corrupt entry without a guard.
+        const stored = { ...(persisted as Partial<FiltersState>) };
+        delete stored.startDate;
+        delete stored.endDate;
+        return { ...current, ...stored };
+      },
     }
   )
 );

@@ -50,6 +50,16 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
    ledger, and it degrades to the old behaviour (a Supabase query per load)
    rather than breaking. Worth knowing before wondering why the cache
    "stopped working" years from now.
+8. **Signing in on a second device ends the session on the first.** Nothing in
+   this repo does that — each device runs its own PKCE exchange and gets its own
+   row in `auth.sessions`, and multi-device is Supabase's default. Check the
+   dashboard: Authentication → Sessions → "Enforce single session per user",
+   plus the time-box and inactivity timeouts beside it. Those settings are
+   **project-wide**, and the project is shared with the user's other apps, so
+   one of them may have turned it on. Separate but adjacent: `signOut()` in
+   `src/lib/supabase/actions.ts` takes supabase-js's default `scope: "global"`,
+   which revokes *every* device's refresh token — signing out on the laptop
+   really does sign the phone out. `{ scope: "local" }` if that's unwanted.
 
 ## Settled
 
@@ -68,6 +78,13 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
   compared against a baseline. `/reports` stays period-only and filter-free
   (ARCHITECTURE.md): "gifts, past year, with the daily chart" is a `/daily`
   question, and a report can't express it.
+- **The date range is the one filter that doesn't persist.** Categories, stores,
+  discount, net-paid, entities and disbursement type all survive a reload;
+  `startDate`/`endDate` are re-derived from `defaultFilters` on every load, so a
+  visit always opens on a trailing window ending **today**. A saved `endDate` is
+  a snapshot of whenever you last opened the app, which quietly hides everything
+  since. `filters-store.ts` enforces it from both sides — `partialize` stops
+  writing the dates, `merge` drops any a previous version already wrote.
 
 ## Known non-issues
 
