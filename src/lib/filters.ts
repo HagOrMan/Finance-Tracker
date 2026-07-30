@@ -38,6 +38,56 @@ export function defaultFilters(defaultRangeDays: number, subtractRefunds: boolea
   };
 }
 
+/**
+ * The date-range quick-picks in the filter bar.
+ *
+ * **Trailing windows, not calendar ones** — "this month" on the 2nd is two days
+ * of data, which compares badly against anything. Same shape and the same
+ * 7/30/365 as `REPORT_PERIODS`, so "past year" means the same span on `/daily`
+ * as it does on `/reports`.
+ *
+ * One deliberate difference from a report window, which ends *yesterday* so it
+ * never counts a day still being spent: a preset ends **today**. A filter is
+ * something you look through, not a figure you compare against a baseline, and
+ * a range that silently omitted this morning's receipts would read as a bug.
+ */
+export interface DateRangePreset {
+  label: string;
+  title: string;
+  days: number;
+}
+
+export const DATE_RANGE_PRESETS: DateRangePreset[] = [
+  { label: "7d", title: "The last 7 days, ending today", days: 7 },
+  { label: "30d", title: "The last 30 days, ending today", days: 30 },
+  { label: "90d", title: "The last 90 days, ending today", days: 90 },
+  { label: "1y", title: "The last 365 days, ending today", days: 365 },
+];
+
+/**
+ * `days - 1` back from today, inclusive of today — matching `defaultFilters`, so
+ * "7d" is seven days of data rather than eight.
+ */
+export function presetRange(days: number): { startDate: string; endDate: string } {
+  return { startDate: daysAgoISO(days - 1), endDate: todayISO() };
+}
+
+/**
+ * Which preset the current range *is*, if any, so the bar can show which one is
+ * in effect. Matched by recomputing rather than by storing "the active preset":
+ * pressing a preset writes two plain dates and nothing remembers it happened,
+ * which is the same rule the category presets follow — there is no second,
+ * invisible piece of filter state to reason about. Nudge either date by a day
+ * and no button is highlighted, correctly.
+ */
+export function activePresetDays(startDate: string, endDate: string): number | null {
+  for (const { days } of DATE_RANGE_PRESETS) {
+    const range = presetRange(days);
+    if (range.startDate === startDate && range.endDate === endDate) return days;
+  }
+  return null;
+}
+
 // All date comparisons are plain "YYYY-MM-DD" string comparisons — that
 // ordering is lexicographically identical to chronological ordering for
 // zero-padded ISO dates, and avoids `new Date(...)` timezone parsing bugs.

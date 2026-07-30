@@ -74,7 +74,12 @@ export default function OverviewPage() {
           <Separator />
 
           <div>
-            <h2 className="mb-3 text-lg font-medium text-foreground">Recent receipts</h2>
+            {/* Not "Recent receipts": the table sorts, and the ten rows are the
+                top ten of whatever sort is active — newest first until you
+                click a column, biggest first once you click Price. */}
+            <h2 className="mb-3 text-lg font-medium text-foreground">
+              Top 10 receipts
+            </h2>
             <ReceiptsTable receipts={receipts} priceKey={pcol} priceLabel={plabel} limit={10} />
           </div>
         </>

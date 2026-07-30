@@ -59,6 +59,15 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
   matching the original Streamlit behaviour. `/monthly` deliberately keeps the
   category-summed `StackedCategoryBarChart` — 200 segments in a month bar is
   noise, not detail.
+- **Date-range presets (7d / 30d / 90d / 1y) live on the shared `FilterBar`, not
+  on `/daily` or `/reports`.** They write two plain dates into the one filter
+  every date-range page reads, so a preset that existed on only one page would
+  be setting state the others can't see a control for. They are *trailing*
+  windows ending **today**, unlike a report window, which ends yesterday so it
+  never counts a day still being spent — a filter is looked through, not
+  compared against a baseline. `/reports` stays period-only and filter-free
+  (ARCHITECTURE.md): "gifts, past year, with the daily chart" is a `/daily`
+  question, and a report can't express it.
 
 ## Known non-issues
 
@@ -82,6 +91,11 @@ Quality only — no bugs. Noted so they aren't rediscovered as findings.
   string-based dates exist to avoid, and `todayInZone` has no equivalent
   without `date-fns-tz`. Reasoning is recorded at the top of `dates.ts` so it
   doesn't get re-raised.
+- **`ReceiptsTable` sorts client-side over the whole filtered array**, which is
+  right at this ledger's size and would need rethinking (server-side ordering,
+  or virtualisation) only if a single view ever held tens of thousands of rows.
+  Its footer total is suppressed when `limit` is set, so the overview's top-10
+  slice never shows a total of an arbitrary ten.
 - Small duplications: the bucket+category `Map` accumulation (now only within
   `/monthly`, twice — `/daily` no longer does it), the
   `discount > 0 || discount_percentage > 0` predicate, the weekly/daily

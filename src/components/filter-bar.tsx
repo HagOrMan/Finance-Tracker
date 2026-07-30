@@ -2,6 +2,7 @@
 
 import { useId, useMemo, type ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +18,13 @@ import { FilterShell } from "@/components/filter-shell";
 import { MultiSelect, type MultiSelectPreset } from "@/components/multi-select";
 import { useFiltersStore } from "@/store/filters-store";
 import { useMergedReceipts } from "@/hooks/use-finance-data";
-import { commonSpendingCategories, type Filters } from "@/lib/filters";
+import {
+  activePresetDays,
+  commonSpendingCategories,
+  DATE_RANGE_PRESETS,
+  presetRange,
+  type Filters,
+} from "@/lib/filters";
 import { COMPARISON_EXCLUDED_CATEGORIES } from "@/lib/config";
 
 /**
@@ -51,13 +58,10 @@ export function FilterBar({
   // ever render at once — the pages used to hand-pick ids to avoid colliding.
   const netPaidId = useId();
 
-  const startDate = useFiltersStore((s) => s.startDate);
-  const endDate = useFiltersStore((s) => s.endDate);
   const categories = useFiltersStore((s) => s.categories);
   const stores = useFiltersStore((s) => s.stores);
   const hasDiscount = useFiltersStore((s) => s.hasDiscount);
   const subtractRefunds = useFiltersStore((s) => s.subtractRefunds);
-  const setDateRange = useFiltersStore((s) => s.setDateRange);
   const setCategories = useFiltersStore((s) => s.setCategories);
   const setStores = useFiltersStore((s) => s.setStores);
   const setHasDiscount = useFiltersStore((s) => s.setHasDiscount);
@@ -95,32 +99,7 @@ export function FilterBar({
 
   return (
     <FilterShell activeCount={activeCount}>
-      {leading ?? (
-        <div className="flex flex-col gap-1">
-          <Label
-            className="text-xs font-medium text-muted-foreground"
-            htmlFor="filter-start"
-          >
-            Date range
-          </Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="filter-start"
-              type="date"
-              value={startDate}
-              onChange={(e) => setDateRange(e.target.value, endDate)}
-              className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
-            />
-            <span className="text-muted-foreground">-</span>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setDateRange(startDate, e.target.value)}
-              className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
-            />
-          </div>
-        </div>
-      )}
+      {leading ?? <DateRangeField />}
 
       <MultiSelect
         label="Category"
@@ -176,5 +155,80 @@ export function FilterBar({
         </div>
       </div>
     </FilterShell>
+  );
+}
+
+/**
+ * The default scope control: two dates, plus quick-picks for the spans actually
+ * compared often ("what did I spend on gifts this past year").
+ *
+ * The presets sit here rather than on `/daily` alone because the date range is
+ * the *shared* filter — a preset that only existed on one page would set state
+ * every other page reads, from a control they don't have. `/monthly` never
+ * renders this (it replaces the whole block via `leading`), so its month
+ * multiselect stays the only scope control there, which is the point.
+ *
+ * Reads the store itself instead of taking props: when a page passes `leading`
+ * this component doesn't mount, so those three subscriptions don't exist and a
+ * date change can't re-render `/monthly`'s bar.
+ */
+function DateRangeField() {
+  const startDate = useFiltersStore((s) => s.startDate);
+  const endDate = useFiltersStore((s) => s.endDate);
+  const setDateRange = useFiltersStore((s) => s.setDateRange);
+
+  // Recomputed every render rather than stored — see `activePresetDays`. Also
+  // means the highlight is correct across midnight without anything watching
+  // the clock: "30d" simply stops matching yesterday's dates.
+  const activeDays = activePresetDays(startDate, endDate);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-3">
+        <Label
+          className="text-xs font-medium text-muted-foreground"
+          htmlFor="filter-start"
+        >
+          Date range
+        </Label>
+        {/* Same 24px ghost buttons as the category presets in `MultiSelect`, so
+            the two kinds of quick-pick read as one idea. */}
+        <div className="flex items-center gap-0.5">
+          {DATE_RANGE_PRESETS.map((preset) => (
+            <Button
+              key={preset.label}
+              type="button"
+              variant={activeDays === preset.days ? "secondary" : "ghost"}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              title={preset.title}
+              aria-pressed={activeDays === preset.days}
+              onClick={() => {
+                const range = presetRange(preset.days);
+                setDateRange(range.startDate, range.endDate);
+              }}
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          id="filter-start"
+          type="date"
+          value={startDate}
+          onChange={(e) => setDateRange(e.target.value, endDate)}
+          className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
+        />
+        <span className="text-muted-foreground">-</span>
+        <Input
+          type="date"
+          value={endDate}
+          onChange={(e) => setDateRange(startDate, e.target.value)}
+          className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
+        />
+      </div>
+    </div>
   );
 }

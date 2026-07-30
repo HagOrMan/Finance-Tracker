@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Pencil } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -33,7 +34,77 @@ import {
 import { deleteSequentially } from "@/lib/bulk-delete";
 import { formatCurrency } from "@/lib/format";
 import { buildStoreGroups } from "@/lib/stores";
+import { cn } from "@/lib/utils";
 import type { MergedReceipt } from "@/lib/data/types";
+
+/**
+ * Everything worth ordering by. `"amount"` is the caller's `priceKey` column
+ * (net or gross), which is why it isn't just a field name — that column's
+ * *meaning* is set by the "Net paid" toggle, so the sort has to follow it rather
+ * than pin to one field.
+ *
+ * `note` is missing on purpose: alphabetical free text answers no question.
+ */
+type SortColumn =
+  | "date"
+  | "store"
+  | "category"
+  | "price"
+  | "total_refunded"
+  | "amount"
+  | "discount"
+  | "discount_percentage"
+  | "updated_at";
+
+interface Sort {
+  column: SortColumn;
+  dir: "asc" | "desc";
+}
+
+/**
+ * Which way a column reads when you first click it. Names want A→Z; dates and
+ * money want biggest/newest first, because "click Price, see the top" is the
+ * whole reason to sort a spending table.
+ */
+const ASCENDING_FIRST = new Set<SortColumn>(["store", "category"]);
+
+function sortValue(
+  r: MergedReceipt,
+  column: SortColumn,
+  priceKey: "price" | "actual_price",
+): string | number {
+  switch (column) {
+    case "amount":
+      return r[priceKey];
+    // Case-folded so a lowercase store name doesn't sort after every
+    // capitalised one — ASCII puts the whole uppercase alphabet first.
+    case "store":
+      return r.store.toLowerCase();
+    case "category":
+      return r.category.toLowerCase();
+    // Typed non-null, but the cell below still renders "—" for an empty one; as
+    // a sort key "" lands at the oldest end, which is where "never edited"
+    // belongs.
+    case "updated_at":
+      return r.updated_at;
+    default:
+      return r[column];
+  }
+}
+
+/**
+ * Compares two values of the *same* column, so the pair is always both numbers
+ * or both strings. Split out rather than inlined because `<` on a
+ * `string | number` union is a type error, and widening the accessor's return to
+ * `any` to dodge that would give up the checking that keeps a new column honest.
+ *
+ * ISO dates are compared as strings, which is chronological for zero-padded
+ * "YYYY-MM-DD" — the same property the filters rely on.
+ */
+function compareValues(a: string | number, b: string | number): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b));
+}
 
 /**
  * The receipts table, in two modes.
@@ -67,6 +138,8 @@ export function ReceiptsTable({
   const [category, setCategory] = useState<string[]>([]);
   const [store, setStore] = useState<string[]>([]);
   const [noteSearch, setNoteSearch] = useState("");
+  // Newest first, as the table has always opened.
+  const [sort, setSort] = useState<Sort>({ column: "date", dir: "desc" });
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editing, setEditing] = useState<MergedReceipt | null>(null);
@@ -92,6 +165,7 @@ export function ReceiptsTable({
     [receipts],
   );
 
+  const dir = sort.dir === "asc" ? 1 : -1;
   let filtered = receipts
     .filter((r) => (category.length ? category.includes(r.category) : true))
     .filter((r) => (store.length ? store.includes(r.store) : true))
@@ -100,9 +174,39 @@ export function ReceiptsTable({
         ? (r.note ?? "").toLowerCase().includes(noteSearch.toLowerCase())
         : true,
     )
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id));
+    // Sorting the array `.filter()` just produced, so this never mutates the
+    // caller's `receipts`.
+    .sort((a, b) => {
+      const cmp = compareValues(
+        sortValue(a, sort.column, priceKey),
+        sortValue(b, sort.column, priceKey),
+      );
+      // Always tie-break newest-id-first, in a fixed direction. A whole column
+      // of equal values (every discount 0.0%) would otherwise have no defined
+      // order, and rows could reshuffle on an unrelated re-render.
+      return cmp !== 0 ? cmp * dir : b.id - a.id;
+    });
 
+  // After the sort, so "top 10" on the overview follows whatever is on screen
+  // rather than always meaning "10 most recent".
   if (limit) filtered = filtered.slice(0, limit);
+
+  function toggleSort(column: SortColumn) {
+    setSort((prev) =>
+      prev.column === column
+        ? { column, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { column, dir: ASCENDING_FIRST.has(column) ? "asc" : "desc" },
+    );
+  }
+
+  const totals = filtered.reduce(
+    (acc, r) => ({
+      price: acc.price + r.price,
+      refunded: acc.refunded + r.total_refunded,
+      amount: acc.amount + r[priceKey],
+    }),
+    { price: 0, refunded: 0, amount: 0 },
+  );
 
   const colSpan =
     7 +
@@ -231,20 +335,67 @@ export function ReceiptsTable({
                 />
               </TableHead>
             )}
-            <TableHead>Date</TableHead>
-            <TableHead>Store</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead className="text-right">Price</TableHead>
-            <TableHead className="text-right">Refunded</TableHead>
-            <TableHead className="text-right">{priceLabel}</TableHead>
-            {showDiscountColumns && (
-              <TableHead className="text-right">Discount</TableHead>
-            )}
-            {showDiscountColumns && (
-              <TableHead className="text-right">Discount %</TableHead>
-            )}
+            {/* Column order is by how often it's read, not by how the row is
+                shaped: date, where, how much, what kind, what it was. Price
+                (gross), Refunded and the discount pair are the derivation
+                behind the net figure — kept, but off to the right where a wide
+                table scrolls them out of the way. */}
+            <SortHead column="date" label="Date" sort={sort} onSort={toggleSort} />
+            <SortHead column="store" label="Store" sort={sort} onSort={toggleSort} />
+            <SortHead
+              column="amount"
+              label={priceLabel}
+              sort={sort}
+              onSort={toggleSort}
+              align="right"
+            />
+            <SortHead
+              column="category"
+              label="Category"
+              sort={sort}
+              onSort={toggleSort}
+            />
             <TableHead>Note</TableHead>
-            {editable && <TableHead>Last edited</TableHead>}
+            <SortHead
+              column="price"
+              label="Price"
+              sort={sort}
+              onSort={toggleSort}
+              align="right"
+            />
+            <SortHead
+              column="total_refunded"
+              label="Refunded"
+              sort={sort}
+              onSort={toggleSort}
+              align="right"
+            />
+            {showDiscountColumns && (
+              <SortHead
+                column="discount"
+                label="Discount"
+                sort={sort}
+                onSort={toggleSort}
+                align="right"
+              />
+            )}
+            {showDiscountColumns && (
+              <SortHead
+                column="discount_percentage"
+                label="Discount %"
+                sort={sort}
+                onSort={toggleSort}
+                align="right"
+              />
+            )}
+            {editable && (
+              <SortHead
+                column="updated_at"
+                label="Last edited"
+                sort={sort}
+                onSort={toggleSort}
+              />
+            )}
             {/* Pinned to the right edge of the horizontal scroll container, so
                 the edit affordance is reachable without scrolling a wide table
                 all the way over. `bg-background` is required — a transparent
@@ -274,7 +425,12 @@ export function ReceiptsTable({
                 </TableCell>
               )}
               <TableCell>{r.date}</TableCell>
-              <TableCell>
+              {/* Store and the net figure carry `font-medium` for their whole
+                  column — they're what a row is scanned for, and at `text-sm`
+                  the step up from 400 is enough to lead the eye down those two
+                  without the rest reading as greyed out. Their headers are
+                  already `font-medium`, so the weight runs the full column. */}
+              <TableCell className="font-medium">
                 {r.store}
                 {editable && r.subscription_id != null && (
                   // Labels only, links nowhere: the natural target is /manage
@@ -285,15 +441,18 @@ export function ReceiptsTable({
                   </Badge>
                 )}
               </TableCell>
+              <TableCell className="text-right font-medium tabular-nums">
+                {formatCurrency(r[priceKey])}
+              </TableCell>
               <TableCell>{r.category}</TableCell>
+              <TableCell className="max-w-60 truncate" title={r.note ?? ""}>
+                {r.note ?? ""}
+              </TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatCurrency(r.price)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatCurrency(r.total_refunded)}
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {formatCurrency(r[priceKey])}
               </TableCell>
               {showDiscountColumns && (
                 <TableCell className="text-right tabular-nums">
@@ -305,9 +464,6 @@ export function ReceiptsTable({
                   {r.discount_percentage.toFixed(1)}%
                 </TableCell>
               )}
-              <TableCell className="max-w-60 truncate" title={r.note ?? ""}>
-                {r.note ?? ""}
-              </TableCell>
               {editable && (
                 <TableCell className="text-xs text-muted-foreground">
                   {r.updated_at ? r.updated_at.slice(0, 10) : "—"}
@@ -340,6 +496,50 @@ export function ReceiptsTable({
             </TableRow>
           )}
         </TableBody>
+
+        {/* Sums exactly the rows above, which is why it's suppressed when
+            `limit` is in play: on the overview's "10 most recent" a total would
+            be the sum of an arbitrary ten, and a footer labelled "Total" that
+            silently means "total of a slice" is worse than no footer.
+
+            It exists at all because this table carries its own category / store
+            / note filters, so its subset is often narrower than the page's — a
+            page-level stat card can't answer "and how much of that was
+            Costco". */}
+        {!limit && filtered.length > 0 && (
+          <TableFooter>
+            <TableRow>
+              {/* Cells track the header order above — checkbox + Date + Store,
+                  then the net total under its own column. */}
+              <TableCell colSpan={(selectable ? 1 : 0) + 2}>
+                Total — {filtered.length} receipt
+                {filtered.length === 1 ? "" : "s"}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatCurrency(totals.amount)}
+              </TableCell>
+              {/* Category and Note. */}
+              <TableCell colSpan={2} />
+              <TableCell className="text-right tabular-nums">
+                {formatCurrency(totals.price)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatCurrency(totals.refunded)}
+              </TableCell>
+              {/* Discount and the editable columns: a summed discount is
+                  misleading next to a mean percentage, so these stay empty
+                  rather than carrying a number nobody asked for. Rendered
+                  conditionally because with neither option on there is no
+                  column left to span, and `colSpan={0}` means "to the end of
+                  the row" in HTML — it would silently widen the footer. */}
+              {(showDiscountColumns || editable) && (
+                <TableCell
+                  colSpan={(showDiscountColumns ? 2 : 0) + (editable ? 2 : 0)}
+                />
+              )}
+            </TableRow>
+          </TableFooter>
+        )}
       </Table>
 
       {selectable && (
@@ -421,5 +621,56 @@ export function ReceiptsTable({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * A clickable column header.
+ *
+ * The button is inside the `th` rather than being the `th` — a header cell can't
+ * itself be a button, and wrapping keeps `aria-sort` on the cell where screen
+ * readers look for it. Being inline-flex, it follows the cell's own
+ * `text-right`, so the numeric columns still align to their figures.
+ *
+ * Inactive columns keep a faint double arrow instead of revealing one on hover:
+ * hover affordances don't exist on the phone this app is mostly read on, and
+ * "the table sorts" is worth stating unconditionally.
+ */
+function SortHead({
+  column,
+  label,
+  sort,
+  onSort,
+  align = "left",
+}: {
+  column: SortColumn;
+  label: string;
+  sort: Sort;
+  onSort: (column: SortColumn) => void;
+  align?: "left" | "right";
+}) {
+  const active = sort.column === column;
+  const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+
+  return (
+    <TableHead
+      className={align === "right" ? "text-right" : undefined}
+      aria-sort={
+        active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"
+      }
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={cn(
+          "inline-flex cursor-pointer items-center gap-1 font-medium hover:text-foreground",
+          active && "text-foreground",
+        )}
+        title={`Sort by ${label.toLowerCase()}`}
+      >
+        {label}
+        <Icon className={cn("size-3 shrink-0", !active && "opacity-40")} />
+      </button>
+    </TableHead>
   );
 }
