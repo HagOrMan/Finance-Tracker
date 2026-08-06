@@ -22,35 +22,46 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
 
 ## Open
 
-1. **Read one cron firing's run JSON** in the Vercel function logs. On a
+1. **Monthly digest — in progress.** A second report lens, calendar-month based,
+   mailed on the 3rd and viewable at `/reports/monthly` with a month picker.
+   Every design decision is settled and recorded in `ARCHITECTURE.md`
+   ("Monthly digest"); read that before touching it. Build order:
+   `src/lib/monthly-digest.ts` (pure model) → `monthly-digest-runner.ts` →
+   `src/lib/email/monthly-digest.ts` → the cron branch → the page.
+   - Sections: net-position headline · big spenders (absorbs the excluded
+     strip) · category × month grid, 6 months · projection for next month and
+     next 4 · income per entity · top 5 stores · frequency-vs-ticket
+     decomposition, quiet wins, Stressed/Social ratio, savings YTD.
+   - New config constants land in `src/lib/config.ts` beside `REPORT_PERIODS`.
+2. **Read one cron firing's run JSON** in the Vercel function logs. On a
    non-Saturday it should carry
    `weeklyReport: { sent: false, subject: null, reason: "not-saturday" }` —
    that line exists so a broken Saturday is diagnosable rather than silent. Then
    confirm the first real Saturday send. This is the only thing deployment
    didn't immediately verify, because a firing arrives on the cron's timetable.
-2. **`/manage` has no URL-driven filters**, so the `Sub` badge on generated
+3. **`/manage` has no URL-driven filters**, so the `Sub` badge on generated
    receipts links nowhere. Giving that page query-param filter state is worth
    doing as one piece rather than as a one-off link.
-3. **The Entities tab's row list is read-only.** `DisbursementEditor` exists and
+4. **The Entities tab's row list is read-only.** `DisbursementEditor` exists and
    would drop straight in — it just never got wired into
    `entity-detail-modal.tsx`, while the Stores tab's equivalent rows open
    `ReceiptEditor`. Small, self-contained fix.
-4. **The quick-add "refund of receipt" combobox searches all receipts**, which
+5. **The quick-add "refund of receipt" combobox searches all receipts**, which
    is fine at the current size. If it ever gets slow, the agreed shape is: show
    the most recent N by default, and only search the full history once ~3
    characters are typed.
-5. **TypeScript is pinned to 5.x and ESLint to 9.x**, not the newest majors —
+6. **TypeScript is pinned to 5.x and ESLint to 9.x**, not the newest majors —
    `typescript-eslint` and `eslint-config-next` peer ranges hadn't caught up.
    Revisit when they have.
-6. **Watch one Supabase egress figure after the caching pass.** The Data Cache
+7. **Watch one Supabase egress figure after the caching pass.** The Data Cache
    should have collapsed most page loads to zero Supabase queries; the free
    tier's 5 GB/month was never close, but the number is now the way to tell the
    invalidation is firing rather than the one-hour backstop doing all the work.
-7. **Vercel's Data Cache drops entries over ~2 MB.** Well beyond the current
+8. **Vercel's Data Cache drops entries over ~2 MB.** Well beyond the current
    ledger, and it degrades to the old behaviour (a Supabase query per load)
    rather than breaking. Worth knowing before wondering why the cache
    "stopped working" years from now.
-8. **Watch for forced re-logins.** Refresh-token rotation was turned off
+9. **Watch for forced re-logins.** Refresh-token rotation was turned off
    **2026-07-30**, after re-logins every day or two on the deployed site (never
    on localhost). Mechanism, trade-off and dashboard location are in
    `ARCHITECTURE.md` §2.1. **Nothing is confirmed yet** — give it 2–3 weeks,

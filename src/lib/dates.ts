@@ -54,6 +54,69 @@ export function dayOfWeekUTC(dateISO: string): number {
 
 export const SATURDAY = 6;
 
+// ---------------------------------------------------------------------------
+// Calendar months — "YYYY-MM"
+//
+// The monthly digest is the only calendar-period lens in the app
+// (ARCHITECTURE.md). A month is a plain "YYYY-MM" string for the same reason a
+// date is a plain "YYYY-MM-DD" one: it sorts lexicographically, compares with
+// `===`, and cannot be shifted by a timezone it never touched.
+//
+// Every one of these anchors in UTC via Date.UTC, matching the rest of the file.
+// ---------------------------------------------------------------------------
+
+/** The "YYYY-MM" a plain date falls in. Pure slicing — no parsing at all. */
+export function monthKeyOf(dateISO: string): string {
+  return dateISO.slice(0, 7);
+}
+
+/** First day of a month, as "YYYY-MM-DD". */
+export function monthStart(monthKey: string): string {
+  return `${monthKey}-01`;
+}
+
+/**
+ * Last day of a month — 28, 29, 30 or 31, leap years included.
+ *
+ * Day 0 of the *following* month is the last day of this one, which is the one
+ * piece of `Date` arithmetic that gets month lengths right without a table.
+ */
+export function monthEnd(monthKey: string): string {
+  const year = Number(monthKey.slice(0, 4));
+  const month = Number(monthKey.slice(5, 7));
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+/** Days in a month. The digest reports it because month totals are not comparable without it. */
+export function daysInMonth(monthKey: string): number {
+  return Number(monthEnd(monthKey).slice(8, 10));
+}
+
+/** Shift a month key by whole months, forward or back. Rolls the year over. */
+export function addMonthsToKey(monthKey: string, months: number): string {
+  const year = Number(monthKey.slice(0, 4));
+  const month = Number(monthKey.slice(5, 7));
+  return new Date(Date.UTC(year, month - 1 + months, 1))
+    .toISOString()
+    .slice(0, 7);
+}
+
+/**
+ * The `count` months immediately preceding `monthKey`, **oldest first**.
+ *
+ * Oldest-first because every consumer is a left-to-right time axis: the grid's
+ * columns and the forecast's baseline series both read forward. `reports.ts`'s
+ * `precedingWindows` returns most-recent-first for the opposite reason — its
+ * consumer is a "vs last week" list.
+ */
+export function precedingMonths(monthKey: string, count: number): string[] {
+  const out: string[] = [];
+  for (let i = count; i >= 1; i -= 1) {
+    out.push(addMonthsToKey(monthKey, -i));
+  }
+  return out;
+}
+
 /**
  * Today's date in a named IANA zone, as "YYYY-MM-DD".
  *

@@ -293,6 +293,90 @@ implementation.
 - `src/lib/reports.ts` is pure and does no I/O; `reports-runner.ts` loads. That
   split is what makes the model checkable by hand against literal arrays.
 
+### Monthly digest (`/reports/monthly`)
+
+A second lens, not a fourth period. Same pure-model/runner split, same shared
+primitives, different question: `/reports` asks "how was the last N days", the
+digest asks "what did last month cost and what should I expect next".
+
+- **A calendar month cannot be a `REPORT_PERIODS` entry.** `SpendingReport` is
+  coherent precisely because every window is the same length — `currentWindow`
+  and `precedingWindows` both take a fixed `days`, and every comparison on the
+  type assumes it. Calendar months are 28–31 days. `src/lib/monthly-digest.ts`
+  is therefore its own pure model, sharing `isExcludedCategory`, `nameGroupKey`,
+  `computeSavings` and the format helpers, so neither type grows a nullable
+  field for the other's sake.
+- **Totals are actual, never normalized per day.** Rent and subscriptions are
+  charged per month regardless of its length, so a per-day rate would be wrong
+  for exactly the largest rows. February reads low; that is true, not an artifact.
+- **No "ending yesterday" rule.** A completed calendar month contains no partial
+  day, which is the entire reason the weekly window ends yesterday.
+- **Sends on the 3rd, not the 1st.** Receipts are entered as they happen, so the
+  last days of a month are the least likely to be on the ledger when it closes.
+  Two days of grace costs nothing — the lookback is fixed either way — and a
+  report is a lens, so a receipt entered late is silently absent forever rather
+  than retroactively corrected.
+- **The 3rd is a Saturday roughly one month in seven, and both emails send.**
+  Suppressing either would break the rule the weekly report leans on: that a
+  silent Saturday means the cron is broken.
+- **The headline is net position** (received − all-in), with habitual and all-in
+  directly beneath. Habitual spend alone cannot answer how much of a year's
+  savings the year is consuming.
+
+**What is projected, and what is deliberately not:**
+
+- **Nothing entered by hand on no schedule is projected.** Income arrives when
+  it arrives; rent is paid ad hoc and is not a subscription. Both are reported
+  as observed figures only. Projecting income would be actively misleading —
+  term-time hours are structurally lower than summer, so any average over recent
+  months overestimates income exactly when the projection matters most.
+- **The projection is habitual variable spend plus subscriptions, and says so.**
+  Subscription charges are *computed* from `nthChargeDate`, not estimated —
+  the schedule is known. The total carries an explicit "excludes rent, school,
+  travel" label so a figure omitting the largest cost can never read as a cost
+  of living.
+- **Trimmed mean over 6 months, falling back to the median below 5 usable ones.**
+  Drop-high-drop-low leaves 4 of 6; trimming 2 of 3 points is not an estimator.
+  Each figure reports which rule produced it. Linear regression was rejected: on
+  6–12 noisy monthly points the slope's standard error is large, and
+  extrapolating it produces confident nonsense.
+- **One-offs are stripped from the baseline, then reported as their own monthly
+  average.** "Unforecastable" is not "won't happen" — a budget built from
+  habitual spend alone is short every time a car repair lands.
+- **Multi-month spreads widen as √n·sd, not n·sd.** Monthly deviations are close
+  to independent and partly cancel, so scaling the range linearly overstates the
+  4-month figure by roughly 2×. That total is the number actually budgeted
+  against, so its spread has to be right.
+
+**Big spenders** replaces the excluded-categories strip:
+
+- **A union of three rules, each row stating which one it hit** — over an
+  absolute floor; or ≥3× its own category's trailing-12-month *median* receipt
+  (the mean would be dragged by the very outlier being detected); or ≥5% of
+  all-in. The stated reason is the point: a bare threshold cannot explain why a
+  brake job belongs next to rent.
+- **A percentile was rejected.** At ~50 receipts a month the top 5% is 2–3 rows
+  by construction, so it answers "which were biggest" — always answerable —
+  rather than "was anything unusual", whose honest answer is sometimes no.
+- **Clustering was rejected as scale-free.** In a quiet month a 1-D split
+  cheerfully separates $18 from $12 and calls the grocery run big. Any usable
+  version needs an absolute floor anyway, at which point it earns little.
+- **Subscription-generated receipts are exempt from the relative and share
+  rules.** A recurring charge is the definition of not-a-one-off, and it must
+  not be stripped from the forecast baseline, because it recurs.
+- **Travel/School/Rent get no separate section here.** They are always big
+  spenders, so they are itemized in this one table with an inside/outside-
+  habitual marker, alongside their subtotal and the all-in line. The same
+  dollars never appear in two tables.
+
+**Top stores counts habitual spend only.** All-in would rank the landlord and
+the university first every single month — the same reason rent is out of the
+headline. Grouped with `nameGroupKey`, matching `/stores`.
+
+**The web view takes a month; the email cannot.** Month selection is the one
+thing an email structurally can't offer, and the projection is worth consulting
+mid-month rather than only when it lands.
+
 ### Email
 
 `src/lib/email/` — `layout.ts` (shell, escaping, bar markup), `send.ts` (the
@@ -361,9 +445,13 @@ Each of these was decided, not overlooked.
 | Subscriptions under `DATA_SOURCE=sqlite` | Dev-only mode, no such table |
 | Subscription price-change schedule | Build when a "your price rises on `<date>`" email needs recording in advance. Until then edit the price; past receipts keep the old amount because they are facts |
 | Custom date ranges on `/reports` | An arbitrary range has no natural baseline windows, which is most of the feature. `/daily` and `/monthly` answer those questions |
-| Scheduled monthly/yearly report emails | Hobby has one cron slot, and the on-demand button covers it |
+| Scheduled yearly report emails | The on-demand button covers it. The monthly digest *is* scheduled — as a branch of the same daily cron, not a second slot |
+| Seasonal (month-of-year) forecasting | Needs two of each calendar month before September can be compared to a September. Revisit once the ledger is two years deep |
+| A balance or account concept, and therefore true runway | Net flow answers the same question without a schema change. Build it when "how long does this last" needs an actual number |
 | Multi-currency, split subscriptions, pre-charge reminders | Never asked for |
 
 **Vercel Hobby allows one cron.** `vercel.json` holds it at `0 12 * * *`
-(08:00 EDT / 07:00 EST) and it drives both subscription charges and the Saturday
-report. Anything else needing a schedule folds into that same handler.
+(08:00 EDT / 07:00 EST) and it drives all three scheduled jobs: subscription
+charges, the Saturday weekly report, and the monthly digest on the 3rd. Each is
+a date check inside the one handler. Anything else needing a schedule folds into
+it the same way.
