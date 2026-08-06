@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { Resend } from "resend";
 
 /**
@@ -70,6 +72,24 @@ export async function sendEmail({
       subject,
       html,
       text,
+      headers: {
+        /**
+         * **Stops Gmail threading these together**, which is not cosmetic.
+         *
+         * Every report of a given kind has a near-identical subject and a lot
+         * of repeated structure, so Gmail groups them into one conversation and
+         * then hides the parts it decides are quoted from the previous message
+         * behind a "..." expander. The effect is that whole sections — "What to
+         * expect", say — are collapsed by default and look missing. Resending
+         * to check a change makes it worse each time.
+         *
+         * A unique reference id per message is the documented way to opt out of
+         * that grouping. Random rather than derived from the report's period or
+         * month, because the case that has to work is sending the *same* report
+         * twice in a row.
+         */
+        "X-Entity-Ref-ID": randomUUID(),
+      },
     });
     if (error) {
       console.error("[email] Resend rejected the message:", error);

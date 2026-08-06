@@ -37,6 +37,16 @@ export const EMAIL_COLORS = {
   muted: "#547383",
   faint: "#7a8f99",
   border: "#dce7e8",
+  /**
+   * Row separators inside a section — deliberately darker than `border`.
+   *
+   * `border` is tuned for the *edge* of a card against the page tint, where it
+   * only has to imply a boundary. Used as a rule between rows on white it is
+   * very nearly invisible, especially on a phone, which is exactly how the
+   * monthly digest ended up reading as one undifferentiated block. This is the
+   * lightest value that still reads as a line at arm's length.
+   */
+  rule: "#b3c6cc",
   /** Bar track. Light enough to read as "empty", dark enough to be visible. */
   track: "#e6edee",
   accent: "#00d1b0",
@@ -54,8 +64,25 @@ export const EMAIL_COLORS = {
   down: "#008300",
 } as const;
 
+/**
+ * ⚠️ **Single quotes around `Segoe UI`, never double.**
+ *
+ * This string is interpolated into `style="…"` attributes throughout both
+ * templates. A double quote inside a double-quoted attribute *ends the
+ * attribute* — the HTML parser stops at it, and every declaration after
+ * `font-family` (size, colour, weight, padding) is silently discarded. The
+ * result is an email that renders as unstyled text with no error anywhere, and
+ * that is exactly what it did until this was found: bold headings arrived
+ * regular, and edits to font size and spacing appeared to have no effect
+ * because they were being thrown away before they were ever applied.
+ *
+ * Single quotes are valid CSS for a family name and safe inside a double-quoted
+ * attribute, which is the same reason `escapeHtml` doesn't bother escaping `'`.
+ *
+ * Anything else added here must survive the same test: no `"` in this value.
+ */
 export const EMAIL_FONT =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 /** Cap the content column. Fluid below it; no breakpoint involved. */
 export const EMAIL_MAX_WIDTH = 600;

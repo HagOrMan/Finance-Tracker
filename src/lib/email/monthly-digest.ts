@@ -48,17 +48,31 @@ import {
   barHtml,
   emailShell,
   escapeHtml,
-  sectionHtml,
 } from "./layout";
 import { reportRecipient, sendEmail, type SendResult } from "./send";
 
 const base = `font-family:${EMAIL_FONT};background-color:${C.cardBg};`;
 const bodyText = `${base}font-size:15px;line-height:1.5;color:${C.text};`;
 const mutedText = `${base}font-size:14px;line-height:1.5;color:${C.muted};`;
-/** Row-level descriptions. Italic so it can't be mistaken for a second value. */
-const hintText = `${base}font-size:13px;line-height:1.5;color:${C.faint};font-style:italic;`;
+/**
+ * Row-level descriptions. Italic so it can't be mistaken for a second value.
+ *
+ * Sets `font-weight` explicitly because hints are nested inside labels that are
+ * now bold, and would otherwise inherit the weight and stop reading as an aside.
+ */
+const hintText = `${base}font-size:13px;line-height:1.5;color:${C.faint};font-style:italic;font-weight:400;`;
 
-/** Vertical breathing room on a data row. Doubled from the weekly report's 6px. */
+/**
+ * Vertical breathing room on a data row — double the weekly report's 6px.
+ *
+ * Rows here carry two or three lines (label, comparison, driver), so the gap
+ * between rows has to beat the gap *within* one or the grouping reads wrong.
+ *
+ * This was briefly 20px. That was tuning against output where the padding was
+ * being discarded before it rendered (`EMAIL_FONT`, ARCHITECTURE.md §6) — the
+ * rows never got looser, so the number kept going up. 12px is the value this
+ * was always meant to be.
+ */
 const ROW_PADDING = "12px";
 
 /**
@@ -102,43 +116,100 @@ function rangeLabel(low: number, high: number): string {
  * the numbers above it. Background and colour are both set — Gmail's dark-mode
  * inversion flips text and leaves an explicit background, and the failure mode
  * is always white-on-white.
+ *
+ * **Always preceded by its own rule.** Margin alone was not enough separation:
+ * the last row of a table ran straight into the paragraph describing it, so the
+ * description read as one more row. Closing the table off first is what makes
+ * it read as commentary on what came above rather than part of it.
  */
 function noteHtml(inner: string): string {
-  return `<div style="font-family:${EMAIL_FONT};font-size:13px;line-height:1.55;color:${C.muted};background-color:${C.pageBg};border-left:3px solid ${C.accent};border-radius:0 6px 6px 0;padding:12px 14px;margin-top:16px;">${inner}</div>`;
+  return `${dividerHtml()}<div style="font-family:${EMAIL_FONT};font-size:13px;line-height:1.55;color:${C.muted};background-color:${C.pageBg};border-left:3px solid ${C.accent};border-radius:0 6px 6px 0;padding:12px 14px;">${inner}</div>`;
+}
+
+/**
+ * A separator as a **filled table cell**, not a CSS border.
+ *
+ * Borders on `<td>` are widely but not universally honoured, and the failure is
+ * silent: the rows below simply run together with nothing to say a line was
+ * meant to be there. A cell with a background colour and an explicit `height`
+ * attribute renders everywhere, which is why this is the standard email rule.
+ * 2px rather than 1px because a hairline on a high-density phone screen is
+ * exactly the thing that disappeared here the first time.
+ */
+function dividerRow(): string {
+  return `<tr><td colspan="2" height="2" style="height:2px;line-height:2px;font-size:2px;background-color:${C.rule};">&nbsp;</td></tr>`;
+}
+
+/** Rows with a visible rule between each — never a trailing one. */
+function rowsHtml(rows: (string | false | undefined)[]): string {
+  return rows.filter(Boolean).join(dividerRow());
+}
+
+/** A standalone rule between blocks that aren't table rows. Same reasoning as `dividerRow`. */
+function dividerHtml(marginTop = "14px", marginBottom = "14px"): string {
+  return `<div style="height:2px;line-height:2px;font-size:2px;background-color:${C.rule};margin:${marginTop} 0 ${marginBottom};">&nbsp;</div>`;
 }
 
 /**
  * A two-column data row: label (with optional hint) on the left, value right.
  *
- * `first` suppresses the rule, so the separators land *between* rows rather
- * than leaving a doubled line where the last one meets the section border.
+ * `emphasis` marks a row as a **total rather than an item** — "Next month",
+ * "Total". Those rows were previously identical to the ones they summed, which
+ * left the reader to work out from the wording alone which was which.
  */
 function dataRow({
   label,
   hint,
   value,
-  valueColor,
-  first = false,
+  emphasis = false,
 }: {
   label: string;
   hint?: string;
   value: string;
-  valueColor?: string;
-  first?: boolean;
+  emphasis?: boolean;
 }): string {
-  const rule = first ? "" : `border-top:1px solid ${C.border};`;
+  const labelStyle = emphasis
+    ? `${bodyText}font-weight:700;`
+    : `${mutedText}font-weight:600;`;
   return `<tr>
-      <td style="${mutedText}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;${rule}">${escapeHtml(label)}${
-        hint ? `<div style="${hintText}margin-top:2px;">${escapeHtml(hint)}</div>` : ""
+      <td style="${labelStyle}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;">${escapeHtml(label)}${
+        hint ? `<div style="${hintText}margin-top:4px;">${escapeHtml(hint)}</div>` : ""
       }</td>
-      <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;${rule}${
-        valueColor ? `color:${valueColor};` : ""
-      }">${escapeHtml(value)}</td>
+      <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;">${escapeHtml(value)}</td>
     </tr>`;
 }
 
 function tableHtml(rows: string): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">${rows}</table>`;
+}
+
+/**
+ * The digest's section wrapper — `layout.ts`'s `sectionHtml` with three changes,
+ * which together are why this is its own function rather than three more
+ * parameters on the shared one.
+ *
+ * 1. **A 3px divider between sections.** Once rows inside a section are
+ *    separated by a 2px rule, a 1px section boundary inverts the hierarchy —
+ *    the biggest division on the page would be its faintest line.
+ * 2. **A 13px heading.** At 12px the section headings did not read as headings
+ *    against 15px body text.
+ *
+ * The padding matches `sectionHtml`'s 20px. It was briefly 24px, from the same
+ * mis-tuning as `ROW_PADDING` — see the note there.
+ *
+ * `layout.ts` keeps its role as what both templates genuinely share — the
+ * shell, the escaping, the colour tokens, `barHtml`.
+ */
+function section(heading: string | null, inner: string): string {
+  const headingHtml = heading
+    ? `<div style="margin:0 0 14px;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${C.muted};background-color:${C.cardBg};">${escapeHtml(heading)}</div>`
+    : "";
+  return [
+    `<tr><td style="padding:20px;background-color:${C.cardBg};border-bottom:3px solid ${C.rule};">`,
+    headingHtml,
+    inner,
+    `</td></tr>`,
+  ].join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +280,7 @@ export function buildDigestHtml(
 }
 
 function headerSection(digest: MonthlyDigest): string {
-  return sectionHtml(
+  return section(
     null,
     `<div style="${bodyText}font-size:17px;font-weight:700;">💸 Finance Tracker</div>
      <div style="${mutedText}margin-top:4px;">${escapeHtml(digestTitle(digest))} · ${digest.days} days</div>`,
@@ -219,19 +290,19 @@ function headerSection(digest: MonthlyDigest): string {
 function headlineSection(digest: MonthlyDigest): string {
   const { net, received, allInSpent } = digest.net;
 
-  return sectionHtml(
+  return section(
     null,
     `<div style="${base}font-size:13px;line-height:1.4;color:${C.faint};font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Net for ${escapeHtml(formatMonthLong(digest.month))}</div>
      <div style="${base}font-size:36px;line-height:1.15;font-weight:700;color:${netColor(net)};margin-top:8px;">${escapeHtml(formatCurrency(net))}</div>
      <div style="${mutedText}margin-top:6px;">${escapeHtml(`${formatCurrency(received)} in · ${formatCurrency(allInSpent)} out`)}</div>
-     <div style="margin-top:20px;background-color:${C.cardBg};">
+     ${dividerHtml("16px", "0")}
+     <div style="background-color:${C.cardBg};">
        ${tableHtml(
-         [
+         rowsHtml([
            dataRow({
              label: "Habitual spend",
              hint: `${digest.habitual.receiptCount} receipt${digest.habitual.receiptCount === 1 ? "" : "s"} — the part you control`,
              value: formatCurrency(digest.habitual.spent),
-             first: true,
            }),
            dataRow({
              label: "Rent, school, travel",
@@ -248,7 +319,7 @@ function headlineSection(digest: MonthlyDigest): string {
              hint: `${formatCurrency(digest.savings.yearToDate)} so far this year`,
              value: formatCurrency(digest.savings.month),
            }),
-         ].join(""),
+         ]),
        )}
      </div>`,
   );
@@ -267,7 +338,7 @@ function bigSpenderSection(digest: MonthlyDigest): string {
         );
 
   if (digest.bigSpenders.length === 0) {
-    return sectionHtml(
+    return section(
       "Big spenders",
       `<div style="${mutedText}">Nothing unusually large this month.</div>${note}`,
     );
@@ -276,7 +347,7 @@ function bigSpenderSection(digest: MonthlyDigest): string {
   const shown = digest.bigSpenders.slice(0, MAX_BIG_SPENDER_ROWS);
   const hidden = digest.bigSpenders.length - shown.length;
 
-  const row = (r: BigSpenderRow, i: number) => {
+  const row = (r: BigSpenderRow) => {
     // "outside habitual" is load-bearing: without it the same dollars read as
     // if they were inside the habitual figure two sections up.
     const tags = [
@@ -284,23 +355,22 @@ function bigSpenderSection(digest: MonthlyDigest): string {
       ...(r.inHabitual ? [] : ["outside habitual"]),
       ...(r.recurring ? ["recurring"] : []),
     ].join(" · ");
-    const rule = i === 0 ? "" : `border-top:1px solid ${C.border};`;
     return `<tr>
-        <td style="${bodyText}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;${rule}">${escapeHtml(r.store)}
-          <div style="${hintText}margin-top:2px;">${escapeHtml(`${r.category} · ${tags}`)}</div>
+        <td style="${bodyText}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;font-weight:600;">${escapeHtml(r.store)}
+          <div style="${hintText}margin-top:4px;">${escapeHtml(`${r.category} · ${tags}`)}</div>
         </td>
-        <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;${rule}">${escapeHtml(formatCurrency(r.amount))}</td>
+        <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;">${escapeHtml(formatCurrency(r.amount))}</td>
       </tr>`;
   };
 
   const hiddenRow =
     hidden > 0
-      ? `<tr><td colspan="2" style="${hintText}padding:${ROW_PADDING} 0;border-top:1px solid ${C.border};">+ ${hidden} more over the threshold</td></tr>`
-      : "";
+      ? `<tr><td colspan="2" style="${hintText}padding:${ROW_PADDING} 0;">+ ${hidden} more over the threshold</td></tr>`
+      : undefined;
 
-  return sectionHtml(
+  return section(
     "Big spenders",
-    `${tableHtml(shown.map(row).join("") + hiddenRow)}${note}`,
+    `${tableHtml(rowsHtml([...shown.map(row), hiddenRow]))}${note}`,
   );
 }
 
@@ -328,7 +398,7 @@ function trendSection(
 ): string {
   const { months, rows, otherRow } = digest.grid;
   if (rows.length === 0) {
-    return sectionHtml(
+    return section(
       "Where it goes, month by month",
       `<div style="${mutedText}">No habitual spending on the ledger yet.</div>`,
     );
@@ -351,16 +421,16 @@ function trendSection(
   ) => {
     const current = values[values.length - 1] ?? null;
     const typicalValue = typical.get(category);
-    return `<div style="background-color:${C.cardBg};padding:${first ? "0" : "16px"} 0 0;margin-top:${first ? "0" : "16px"};${first ? "" : `border-top:1px solid ${C.border};`}">
+    return `${first ? "" : dividerHtml()}<div style="background-color:${C.cardBg};">
         ${tableHtml(
           `<tr>
-             <td style="${bodyText}padding:0 12px 6px 0;font-weight:600;">${escapeHtml(category)}</td>
-             <td align="right" style="${bodyText}padding:0 0 6px;font-weight:700;white-space:nowrap;">${escapeHtml(compact(current))}</td>
+             <td style="${bodyText}padding:0 12px 8px 0;font-weight:600;">${escapeHtml(category)}</td>
+             <td align="right" style="${bodyText}padding:0 0 8px;font-weight:700;white-space:nowrap;">${escapeHtml(compact(current))}</td>
            </tr>
            ${
              typicalValue === undefined
                ? ""
-               : `<tr><td colspan="2" style="${hintText}padding:0 0 8px;">typical month ${escapeHtml(compact(typicalValue))}</td></tr>`
+               : `<tr><td colspan="2" style="${hintText}padding:0 0 12px;">typical month ${escapeHtml(compact(typicalValue))}</td></tr>`
            }`,
         )}
         ${columnChartHtml(values, color)}
@@ -385,7 +455,7 @@ function trendSection(
   const remainder = [...tail, ...(otherRow ? [otherRow] : [])];
   const remainderLine =
     remainder.length > 0
-      ? `<div style="${mutedText}margin-top:16px;padding-top:16px;border-top:1px solid ${C.border};">Everything else — ${escapeHtml(
+      ? `${dividerHtml()}<div style="${mutedText}">Everything else — ${escapeHtml(
           compact(
             remainder.reduce(
               (sum, row) => sum + (row.values[row.values.length - 1] ?? 0),
@@ -395,7 +465,7 @@ function trendSection(
         )} this month</div>`
       : "";
 
-  return sectionHtml(
+  return section(
     "Where it goes, month by month",
     `${monthAxisHtml(months)}${blocks}${remainderLine}${noteHtml(
       `Each bar is one month, scaled to that category's own biggest month — so the shape is comparable within a row, not between rows. The last bar is ${escapeHtml(formatMonthAbbr(months[months.length - 1] ?? ""))}. A missing bar means the ledger doesn't reach that month, which is not the same as spending nothing.<br><br>Rent, school and travel aren't here; they're under Big spenders. The full table of figures is on the site.`,
@@ -450,7 +520,7 @@ function columnChartHtml(
 function projectionSection(digest: MonthlyDigest): string {
   const p = digest.projection;
   if (p.categories.length === 0) {
-    return sectionHtml(
+    return section(
       "What to expect",
       `<div style="${mutedText}">Not enough complete months on the ledger to project from yet.</div>`,
     );
@@ -459,16 +529,13 @@ function projectionSection(digest: MonthlyDigest): string {
   const trendTag = (trend: "rising" | "falling" | null) =>
     trend === null ? "" : ` · ${trend}`;
 
-  const categoryRows = p.categories
-    .map((row, i) =>
-      dataRow({
-        label: row.category,
-        hint: `typical ${rangeLabel(row.low, row.high)}${trendTag(row.trend)}`,
-        value: compact(row.perMonth),
-        first: i === 0,
-      }),
-    )
-    .join("");
+  const categoryRows = p.categories.map((row) =>
+    dataRow({
+      label: row.category,
+      hint: `typical ${rangeLabel(row.low, row.high)}${trendTag(row.trend)}`,
+      value: compact(row.perMonth),
+    }),
+  );
 
   const rule =
     p.categories[0]?.rule === "trimmed-mean"
@@ -476,26 +543,30 @@ function projectionSection(digest: MonthlyDigest): string {
       : "Median — too few complete months to trim";
   const baseline = baselineLabel(digest);
 
-  return sectionHtml(
+  return section(
     "What to expect",
     `<div style="${base}font-size:13px;line-height:1.4;color:${C.faint};font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">${escapeHtml(formatMonthLong(p.nextMonth))}</div>
      ${tableHtml(
-       categoryRows +
+       rowsHtml([
+         ...categoryRows,
          dataRow({
            label: "Subscriptions",
            hint: "From the schedule — known, not estimated",
            value: compact(p.subscriptionsNextMonth),
-         }) +
+         }),
          dataRow({
            label: "Next month",
            hint: `typical ${rangeLabel(p.nextMonthTotal.low, p.nextMonthTotal.high)}`,
            value: compact(p.nextMonthTotal.total),
-         }) +
+           emphasis: true,
+         }),
          dataRow({
            label: `Through ${formatMonthLong(p.horizonThrough)}`,
            hint: `${p.horizonMonths} months · typical ${rangeLabel(p.horizonTotal.low, p.horizonTotal.high)}`,
            value: compact(p.horizonTotal.total),
+           emphasis: true,
          }),
+       ]),
      )}
      ${noteHtml(
        `Habitual spend plus subscriptions only — <strong style="background-color:${C.pageBg};color:${C.text};">excludes rent, school and travel</strong>, which are paid ad hoc and have no schedule to project from. Income is never projected either.<br><br>${escapeHtml(rule)}${baseline ? `, over ${escapeHtml(baseline)}` : ""}. Ranges are the middle half of those months; the multi-month band widens as √n, since good and bad months partly cancel.`,
@@ -506,27 +577,31 @@ function projectionSection(digest: MonthlyDigest): string {
 function incomeSection(digest: MonthlyDigest): string {
   const { income } = digest;
   if (income.count === 0) {
-    return sectionHtml(
+    return section(
       "What came in",
       `<div style="${mutedText}">No disbursements recorded this month.</div>`,
     );
   }
 
-  const rows = income.entities
-    .map((entity, i) =>
-      dataRow({
-        label: entity.name,
-        hint: `${entity.count} disbursement${entity.count === 1 ? "" : "s"}`,
-        value: formatCurrency(entity.total),
-        first: i === 0,
-      }),
-    )
-    .join("");
+  const rows = income.entities.map((entity) =>
+    dataRow({
+      label: entity.name,
+      hint: `${entity.count} disbursement${entity.count === 1 ? "" : "s"}`,
+      value: formatCurrency(entity.total),
+    }),
+  );
 
-  return sectionHtml(
+  return section(
     "What came in",
     `${tableHtml(
-      rows + dataRow({ label: "Total", value: formatCurrency(income.total) }),
+      rowsHtml([
+        ...rows,
+        dataRow({
+          label: "Total",
+          value: formatCurrency(income.total),
+          emphasis: true,
+        }),
+      ]),
     )}
      ${noteHtml(
        "Refunds are excluded — they already came off the spending figures. Never projected forward: term-time hours differ too much from summer for an average to mean anything.",
@@ -541,22 +616,22 @@ function topStoresSection(digest: MonthlyDigest): string {
   const rows = digest.topStores
     .map(
       (store, i) =>
-        `<tr><td style="padding:${i === 0 ? "0" : "14px"} 0 0;background-color:${C.cardBg};">
+        `${i === 0 ? "" : dividerHtml()}<div style="background-color:${C.cardBg};">
            ${tableHtml(
              `<tr>
-                <td style="${bodyText}padding:0 12px 6px 0;">${escapeHtml(store.name)}</td>
-                <td align="right" style="${bodyText}padding:0 0 6px;font-weight:700;white-space:nowrap;">${escapeHtml(formatCurrency(store.total))}</td>
+                <td style="${bodyText}padding:0 12px 8px 0;font-weight:600;">${escapeHtml(store.name)}</td>
+                <td align="right" style="${bodyText}padding:0 0 8px;font-weight:700;white-space:nowrap;">${escapeHtml(formatCurrency(store.total))}</td>
               </tr>
               <tr><td colspan="2" style="padding:0;">${barHtml(max > 0 ? (store.total / max) * 100 : 0, C.accent)}</td></tr>
-              <tr><td colspan="2" style="${hintText}padding:4px 0 0;">${store.count} visit${store.count === 1 ? "" : "s"}</td></tr>`,
+              <tr><td colspan="2" style="${hintText}padding:6px 0 0;">${store.count} visit${store.count === 1 ? "" : "s"}</td></tr>`,
            )}
-         </td></tr>`,
+         </div>`,
     )
     .join("");
 
-  return sectionHtml(
+  return section(
     "Where the money went",
-    `${tableHtml(rows)}
+    `${rows}
      ${noteHtml("Habitual spend only — all-in would rank your landlord first every month.")}`,
   );
 }
@@ -583,37 +658,40 @@ function moversSection(digest: MonthlyDigest): string {
   const group = (title: string, rows: CategoryChangeRow[], rising: boolean) => {
     if (rows.length === 0) return "";
     const color = rising ? C.up : C.down;
-    return `<div style="background-color:${C.cardBg};margin-top:16px;">
-        <div style="${base}font-size:13px;line-height:1.4;color:${color};font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;">${escapeHtml(title)}</div>
+    return `<div style="background-color:${C.cardBg};">
+        <div style="${base}font-size:16px;line-height:1.3;color:${color};font-weight:700;margin-bottom:12px;">${escapeHtml(title)}</div>
         ${tableHtml(
-          rows
-            .map((row, i) => {
-              const rule = i === 0 ? "" : `border-top:1px solid ${C.border};`;
-              return `<tr>
-                  <td style="${bodyText}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;${rule}">${escapeHtml(row.category)}
-                    <div style="${hintText}margin-top:2px;">${escapeHtml(changeComparisonLabel(row))}</div>
+          rowsHtml(
+            rows.map(
+              (row) =>
+                `<tr>
+                  <td style="${bodyText}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;font-weight:600;">${escapeHtml(row.category)}
+                    <div style="${hintText}margin-top:4px;">${escapeHtml(changeComparisonLabel(row))}</div>
                     <div style="${hintText}">${escapeHtml(changeDriverLabel(row))}</div>
                   </td>
-                  <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;color:${color};${rule}">${escapeHtml(`${rising ? "+" : "−"}${compact(Math.abs(row.deltaSpent))}`)}</td>
-                </tr>`;
-            })
-            .join(""),
+                  <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;color:${color};">${escapeHtml(`${rising ? "+" : "−"}${compact(Math.abs(row.deltaSpent))}`)}</td>
+                </tr>`,
+            ),
+          ),
         )}
       </div>`;
   };
 
+  const upBlock = group("Spent more", up, true);
+  const downBlock = group("Spent less", down, false);
+
   const eatingBlock =
     eating && eating.stressedShare !== null
-      ? `<div style="${mutedText}margin-top:16px;padding-top:16px;border-top:1px solid ${C.border};">Eating out was ${Math.round(eating.stressedShare * 100)}% stressed, ${Math.round((1 - eating.stressedShare) * 100)}% social${
+      ? `${dividerHtml()}<div style="${mutedText}">Eating out was ${Math.round(eating.stressedShare * 100)}% stressed, ${Math.round((1 - eating.stressedShare) * 100)}% social${
           eating.baselineStressedShare !== null
             ? ` — typically ${Math.round(eating.baselineStressedShare * 100)}% stressed`
             : ""
-        }.<div style="${hintText}margin-top:2px;">${escapeHtml(`${formatCurrency(eating.stressed)} stressed · ${formatCurrency(eating.social)} social`)}</div></div>`
+        }.<div style="${hintText}margin-top:4px;">${escapeHtml(`${formatCurrency(eating.stressed)} stressed · ${formatCurrency(eating.social)} social`)}</div></div>`
       : "";
 
-  return sectionHtml(
+  return section(
     "What moved",
-    `${group("Spent more", up, true)}${group("Spent less", down, false)}${eatingBlock}
+    `${upBlock}${upBlock && downBlock ? dividerHtml() : ""}${downBlock}${eatingBlock}
      ${noteHtml(
        "Each row is your total for the month against what a typical month costs — the same per-month figure as What to expect. One-offs are removed from both sides, so a single big purchase doesn't read as a change in habit.",
      )}`,
@@ -626,7 +704,7 @@ function footerSection(digest: MonthlyDigest, appUrl?: string): string {
   const button = href
     ? `<a href="${escapeHtml(href)}" style="${base}display:inline-block;padding:14px 22px;font-size:15px;font-weight:600;color:#ffffff;background-color:${C.accentDeep};border-radius:8px;text-decoration:none;">Open this month</a>`
     : "";
-  return sectionHtml(
+  return section(
     null,
     `${button}
      <div style="${hintText}margin-top:${href ? "14px" : "0"};">Generated ${escapeHtml(formatLongDate(digest.generatedFor))} for ${escapeHtml(formatMonthLong(digest.month))}. Figures are net of refunds. Anything entered after this was sent is not counted.</div>`,

@@ -423,6 +423,37 @@ mid-month rather than only when it lands.
 `src/lib/email/` — `layout.ts` (shell, escaping, bar markup), `send.ts` (the
 never-throwing Resend wrapper), and one file per template.
 
+- **Every send carries a unique `X-Entity-Ref-ID`.** Without it Gmail groups
+  reports into a single conversation — the subjects and structure are
+  near-identical by design — and then hides whatever it decides is quoted from
+  the previous message behind a "…" expander. Entire sections read as missing,
+  and re-sending to check a change makes it worse each time. The id is random
+  rather than derived from the period or month, because the case that must work
+  is sending the *same* report twice.
+- **Rules between rows are filled table cells, not CSS borders.** A `<td>`
+  border is widely but not universally honoured and fails silently — the rows
+  just run together. A cell with a background colour and an explicit `height`
+  renders everywhere.
+- **`EMAIL_COLORS.border` is for card edges; `EMAIL_COLORS.rule` is for rows.**
+  The edge colour is tuned against the page tint and is very nearly invisible
+  used as a rule on white, which is how the digest first shipped reading as one
+  undifferentiated block.
+- **Every explanatory callout is preceded by its own rule.** Margin alone left
+  the last row of a table running straight into the paragraph describing it, so
+  the description read as one more row. Closing the table off is what makes the
+  note read as commentary rather than data.
+- **Weight carries the hierarchy, not just size.** Row labels are 600, totals
+  and values 700, hints 400 and italic — hints set weight explicitly because
+  they nest inside bold labels and would otherwise inherit it. Sub-headings
+  ("Spent more") are 16px bold rather than 13px uppercase: at small sizes,
+  letter-spaced caps read as *less* prominent than the body text beneath them,
+  which is the opposite of what a heading is for.
+- **The digest has its own `section()` rather than `layout.ts`'s
+  `sectionHtml`.** It needs a heavier section divider (a 2px rule between rows
+  makes a 1px section boundary the faintest line on the page, inverting the
+  hierarchy), more padding, and a larger heading. `layout.ts` stays what both
+  templates genuinely share.
+
 **Sending is never fatal and never throws.** The caller has already done the
 thing the email is about.
 
@@ -470,6 +501,17 @@ Things that look like bugs and get "fixed" into real ones.
 - **Inline chart styling must use the `--color-*` variables**, not the raw HSL
   component variables in `globals.css` — the raw ones aren't valid CSS colours
   on their own.
+- **Nothing interpolated into a `style="…"` attribute may contain a double
+  quote.** `EMAIL_FONT` held `"Segoe UI"` for months. A double quote inside a
+  double-quoted attribute *ends the attribute*, so every declaration after
+  `font-family` — size, colour, weight, padding — was discarded by the parser in
+  all three templates. It fails **silently and invisibly**: the mail sends, the
+  HTML is well-formed enough to render, and the result is text that looks
+  merely unstyled. It was found only because bold headings kept arriving
+  regular and repeated edits to spacing appeared to do nothing — the edits were
+  correct and were being thrown away. Use single quotes for font names; they
+  are valid CSS and safe in a double-quoted attribute, which is the same reason
+  `escapeHtml` leaves `'` alone.
 
 ---
 

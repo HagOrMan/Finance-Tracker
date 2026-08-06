@@ -31,13 +31,29 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
    email, cron branch, API routes and page are all in. The reasoning behind
    every decision is in `ARCHITECTURE.md` ("Monthly digest") — read that before
    changing any of it. What still needs a human:
-   - **Re-read the email after the density pass.** First look found it far too
-     cramped on Gmail mobile and desktop; type went up a step, row padding
-     doubled, rules went between every row, explanatory text became a tinted
-     callout, and the 7-column numeric grid became a column chart per category
-     (the table stays on the web, where it can scroll). Whether that is enough
-     only a real inbox will say. `MAX_CHART_CATEGORIES` in
-     `src/lib/email/monthly-digest.ts` is the knob if it is still long.
+   - **Re-read the email after the second density pass.** Two rounds so far:
+     type up a step and the numeric grid replaced by a column chart per
+     category (the table stays on the web, where it can scroll); then, after
+     the rules still weren't visible, `EMAIL_COLORS.rule` for row separators,
+     separators as filled cells rather than borders, 16px row padding, and the
+     digest's own `section()` with a 3px section divider. `ROW_PADDING` and
+     `MAX_CHART_CATEGORIES` in `src/lib/email/monthly-digest.ts` are the knobs.
+   - **Most of the "the email looks unstyled" feedback was one bug**, not a
+     design problem: `EMAIL_FONT` contained `"Segoe UI"`, whose double quotes
+     terminated every `style="…"` attribute early and discarded font size,
+     colour, weight and padding across **all three** email templates. Fixed in
+     `layout.ts` (single quotes) and recorded in `ARCHITECTURE.md` §6. The
+     density and weight passes made before this was found were never actually
+     rendering; spacing has since been dialled back to what it was originally
+     meant to be (`ROW_PADDING` 12px, 20px sections). **The weekly report and
+     subscription-run mails still need a look** — they use the same `base`
+     pattern, so they were unstyled too and nobody has seen them rendered
+     correctly yet.
+   - **Gmail was collapsing sections behind a "…" expander** — thread grouping
+     across repeated sends, not clipping. Fixed for *all three* email types by
+     a unique `X-Entity-Ref-ID` header in `send.ts`. Worth confirming the
+     weekly report and subscription-run mails still look right, since that
+     change touched their send path too.
    - **Sanity-check the big-spender thresholds against a real month.** The
      $150 floor and the 3× category multiple are guesses until a month's rows
      are looked at; both are constants in `src/lib/config.ts`.

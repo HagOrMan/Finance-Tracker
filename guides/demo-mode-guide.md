@@ -64,51 +64,76 @@ Write the audit results down before proceeding. If the answer is "everything is 
 
 ## 4. Data layer: the adapter seam
 
-If this repo already has a data-source abstraction, **use it and extend it** — do not build a parallel one. If it does not, create one shaped like this.
+**Rule: if the repo already has a data-source abstraction, use it and extend it.** This one does.
 
-Define one interface per domain entity, colocating every operation on that entity:
+| Piece | Where |
+| --- | --- |
+| `DataSource` — one flat interface, ~18 methods over three entities | `src/lib/data/types.ts` |
+| `getDataSource()` — picks an implementation from `DATA_SOURCE` | `src/lib/data/source.ts` |
+| `SupabaseDataSource` (production) / `SqliteDataSource` (offline dev) | `src/lib/data/supabase-source.ts`, `sqlite-source.ts` |
+| Normalized failures: `NotFoundError`, `ForeignKeyViolationError`, `UniqueViolationError` | `src/lib/data/errors.ts` |
 
-```ts
-// src/lib/data/types.ts
-export interface TransactionRepository {
-  list(filter?: TransactionFilter): Promise<Transaction[]>;
-  get(id: string): Promise<Transaction | null>;
-  create(input: NewTransaction): Promise<Transaction>;
-  update(id: string, patch: Partial<Transaction>): Promise<Transaction>;
-  remove(id: string): Promise<void>;
-}
+Three cosmetic differences from the generic sketch this guide used to carry, all resolved in favour of the repo: the interface is **flat** (`loadReceipts()`, `insertReceipt()`, …), not one repository object per entity; the implementations are **classes**; and the selector lives in `source.ts`, not `index.ts`. Everything already returns a `Promise`, so the demo adapter costs nothing to make async-compatible.
 
-export interface DataSource {
-  transactions: TransactionRepository;
-  accounts: AccountRepository;
-  // ...one per entity
-}
+### 4.1 The seam is on the wrong side of the network
+
+Pattern A (`ARCHITECTURE.md` §2) puts the entire data layer on the server:
+
+| | Runs where | Can see `localStorage` |
+| --- | --- | --- |
+| `getDataSource()` → `SupabaseDataSource` | route handlers only | no |
+| `request()` in `src/hooks/use-finance-data.ts` | browser | **yes** |
+
+So a `DemoDataSource` selected inside `getDataSource()` would run in a Vercel function: one dataset shared by every visitor at once, wiped on every cold start, and one visitor's "Reset" resetting everybody. **Do not add a `demo` branch to `getDataSource()`.** It is the obvious move, it looks like the architecturally correct one, and it does not produce a working demo.
+
+The browser's actual seam is a single function — `request()` in [use-finance-data.ts:63](src/hooks/use-finance-data.ts#L63). Every read, every mutation, the Refresh button and both send buttons funnel through it. That is the whole surface.
+
+### 4.2 What to build
+
 ```
-
-Two implementations, one selector:
-
-```
+src/lib/demo/
+  flag.ts          # IS_DEMO — the only read of NEXT_PUBLIC_DEMO_MODE
+  store.ts         # in-memory dataset + localStorage write-through (§5)
+  seed.ts          # generateSeed(): DemoDataset
+  transport.ts     # (method, path, body) -> DemoDataSource call -> parsed body
 src/lib/data/
-  types.ts
-  supabase/          # real implementation
-  demo/              # localStorage-backed implementation
-  index.ts           # picks one based on IS_DEMO
+  demo-source.ts   # class DemoDataSource implements DataSource
 ```
+
+`demo-source.ts` sits with its siblings rather than under `src/lib/demo/` because it implements the same interface they do, and that interface is what keeps the demo honest — a method added to `DataSource` breaks the demo build immediately. Nothing else in `src/lib/data/` is `server-only` except `cache.ts`; `types.ts` and `merge.ts` are plain modules and are all `DemoDataSource` needs.
+
+Then one change, in `request()`:
 
 ```ts
-// src/lib/data/index.ts
-import { IS_DEMO } from "@/lib/demo/flag";
-
-export const data: DataSource = IS_DEMO
-  ? createDemoDataSource()
-  : createSupabaseDataSource();
+async function request<T>(url: string, init?: { method: string; input?: unknown }): Promise<T> {
+  if (IS_DEMO) return demoRequest<T>(url, init); // src/lib/demo/transport.ts
+  const res = await fetch(url, /* … unchanged … */);
+  // …unchanged…
+}
 ```
 
-**Every operation returns a Promise, in both implementations.** The demo one resolves synchronously-ish from memory, but keeping the async signature means calling code is identical and you never rewrite a component when swapping adapters.
+Everything above that line keeps working untouched: every hook, the invalidation fan-out (`invalidateReceipts` / `invalidateDisbursements` / `invalidateSubscriptionCharges`), `placeholderData` on the report queries, and the `ApiError` the tables read `linked` off. The demo exercises the real client, not a parallel one.
 
-Plain objects implementing a TypeScript interface are preferable to classes here — less ceremony, better tree-shaking, and no `this` binding hazards in callbacks. If the existing repo uses classes, match the existing repo. Consistency across your projects matters more than either choice.
+### 4.3 The transport reproduces the route handlers, not just the data
 
-**Bundle hygiene:** import the Supabase implementation lazily (`await import(...)`) inside `createSupabaseDataSource`, so a demo build does not ship the Supabase client to visitors at all.
+Status codes are load-bearing in this UI. `errorResponse()` in [api.ts](src/lib/api.ts) maps `NotFoundError` → 404 and `ForeignKeyViolationError` → 409 with `linked: error.blockedBy`; the client reads that back through `linkedDisbursements()` in `use-finance-data.ts` and renders the blocking rows inline. `demoRequest` must therefore throw `ApiError` with the same status and the same body shape.
+
+Mirror the mapping rules — do **not** import `errorResponse` itself, which returns a `NextResponse` and pulls in `next/server`. Also mirror per route: validate with the same zod schemas from `src/lib/data/schemas.ts` (so a bad form fails identically), treat `?fresh=1` as a no-op, and return the created row for a POST.
+
+### 4.4 Reports and the digest are not CRUD — and this is where the runner split pays off
+
+`/api/reports` and `/api/reports/monthly` return a computed model, not rows. `src/lib/reports.ts` and `src/lib/monthly-digest.ts` are pure and client-importable **by design** — that split exists so the model is checkable without I/O, and it means the demo builds the real report in the browser:
+
+```ts
+buildSpendingReport(mergedReceipts, disbursements, period, today);
+buildMonthlyDigest(mergedReceipts, disbursements, subscriptions, month, today);
+```
+
+Never import `reports-runner.ts`, `monthly-digest-runner.ts` or `subscriptions-runner.ts` — all three are `import "server-only"`, and a client import is a build error, which is the point.
+
+**`today`:** production uses `todayInZone(APP_TIMEZONE)` server-side. `APP_TIMEZONE` is not `NEXT_PUBLIC_`, so in the browser `src/lib/config.ts` evaluates it to its `"America/Toronto"` fallback — meaning `todayInZone(APP_TIMEZONE)` works client-side and gives every visitor the same "today". Use it. Don't reach for `new Date()`, and don't add a `NEXT_PUBLIC_APP_TIMEZONE`.
+
+The two `/send` endpoints return `{ sent, subject, reason }`. In demo, return `{ sent: false, subject, reason: "demo mode" }` so the toast on `/reports` says something true (§8). `POST /api/subscriptions/run-due` and `/charge-now` genuinely write — they generate receipts — and should keep working in the demo. That behaviour is worth showing.
 
 ---
 
@@ -121,16 +146,38 @@ Do **not** read or write `localStorage` on every operation. Do this instead:
 - All writes mutate memory, then schedule a debounced (~250ms) write-through of the whole dataset back to the one key.
 
 ```ts
-const STORAGE_KEY = "demo:v1"; // bump the version to invalidate old shapes
+// Namespaced, because localStorage here already holds `finance-tracker-filters`
+// (the Zustand persist key in src/store/filters-store.ts). Bump v1 -> v2 after a
+// shape change so stale data self-invalidates instead of crashing the app.
+const STORAGE_KEY = "finance-tracker-demo:v1";
 ```
 
-Rules:
+**Reset clears only the demo key.** Wiping the filters key too would make one button both reset data and reset the view, and `ARCHITECTURE.md` §4 is explicit that "Reset filters" and data actions must stay visibly different things.
 
-- **One key, versioned.** Bumping `v1` → `v2` after a schema change makes stale data self-invalidate instead of crashing the app.
-- **Wrap every `localStorage` call in try/catch.** Safari private mode throws on write. Quota is ~5MB. On failure, fall back to memory-only and keep going — a demo that forgets on refresh beats a demo that white-screens.
-- **Never touch `localStorage` during render.** Only in `useEffect` or event handlers. Reading it during render causes hydration mismatches.
-- **Generate IDs with `crypto.randomUUID()`**, and keep the same ID shape as production so nothing downstream cares.
-- Enforce sane caps (e.g. max 500 records per entity) so a visitor hammering "add" cannot blow the quota.
+Still true here, unchanged:
+
+- **Wrap every `localStorage` call in try/catch.** Safari private mode throws on write. On failure fall back to memory-only and keep going — a demo that forgets on refresh beats a demo that white-screens.
+- **Never touch `localStorage` during render.** Only in `useEffect` or event handlers.
+
+On that last point the repo already has the pattern, and §6's `DemoBoot` should copy it rather than invent a second one: `src/store/filters-store.ts` is created with `skipHydration`, [filters-hydrator.tsx](src/components/filters-hydrator.tsx) rehydrates in a `useEffect` and flips `hasHydrated`, and `useFilteredReceipts` folds that flag into its `isLoading` so pages wait instead of rendering wrong numbers. Same shape, same reason.
+
+### 5.1 Five things this repo's model requires
+
+**IDs are `number`, not UUID.** `Receipt.id`, `Disbursement.id` and `Subscription.id` are all `number` (Postgres identity columns), and `refunded_from_receipt` / `subscription_id` are `number | null` foreign keys pointing at them. `crypto.randomUUID()` breaks the types *and* `parseIdParam()`'s positive-integer check. Keep a `nextId` counter per entity inside the persisted blob; monotonic, never reused after a delete.
+
+**Store facts, derive the rest.** `MergedReceipt.total_refunded` and `actual_price` are computed by `mergeReceipts()` ([merge.ts](src/lib/data/merge.ts)). Persist `receipts` and `disbursements` raw and call the real `mergeReceipts` on read. Persisting the merged shape would create a second place that knows what a receipt cost — the exact thing `ARCHITECTURE.md` §1 exists to prevent — and it goes wrong the first time a refund is edited.
+
+**`updated_at` is a database trigger in production.** It is absent from every `Update*Input` on purpose. The demo store has to stamp it on every insert and update itself, or the "last edited" column is blank on every row. (`SqliteDataSource` coalesces it to `""` for the same missing-trigger reason. That is precedent, not a licence — the tables display the column.)
+
+**Three database constraints have to move into the store.** Each one is a behaviour the demo either shows or silently loses:
+
+1. **Receipt delete blocked by refunds** → implement `disbursementsForReceipt(id)` and throw `ForeignKeyViolationError(msg, blocking)` so the 409 carries `linked`.
+2. **Subscription delete blocked by generated receipts** → `receiptsForSubscription(id)`, same shape.
+3. **`unique (subscription_id, date)`** → `insertSubscriptionCharge` throws `UniqueViolationError` when that pair already exists. The runner treats it as success-already-recorded (`ARCHITECTURE.md` §6). Without it, pressing "Run due charges" twice double-charges in the demo and doesn't in production.
+
+Keep `setChargesGenerated` separate from `updateSubscription`, as the interface already does — `charges_generated` is runner bookkeeping, and merging them lets a form desync the schedule.
+
+**Caps have to clear the seed.** The generic "500 per entity" is below what this app needs: the digest reads `DIGEST_BASELINE_MONTHS` (6) months behind its own month and `BIG_SPENDER.medianMonths` is 12, so a seed that makes `/reports/monthly` look real is ~13 months at roughly 50 receipts a month — ~650 rows before a visitor adds anything. **Cap at 2000 per entity.** Size is not the constraint: a receipt serializes to ~150 bytes, so 2000 receipts plus disbursements and subscriptions stays well under 500 KB against a ~5 MB quota.
 
 ---
 
@@ -278,3 +325,78 @@ Run all of these against the deployed demo before linking it anywhere.
 7. Add banner, reset, `noindex`.
 8. Create the Vercel project, set the production branch and the one env var, deploy.
 9. Walk the entire checklist in section 12.
+
+---
+
+## Appendix A — audit of this repo against the guide
+
+Written before any code, per §3. Everything below is a place the guide's assumptions meet something specific here. Sections not listed apply as written.
+
+### §2 — the one flag
+
+`src/lib/env.ts`'s `requireEnv()` **cannot** read it: it does a dynamic `process.env[name]` lookup, which Next does not inline into the client bundle, and the file says so. `flag.ts` must use the literal static access:
+
+```ts
+export const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+```
+
+`IS_DEMO` gets imported by `use-finance-data.ts`, a `"use client"` module, so `flag.ts` must stay free of `server-only` imports. Add `NEXT_PUBLIC_DEMO_MODE` to `.env.example` — `CLAUDE.md` requires it.
+
+### §3 — the audit result
+
+**The thing this section warns is "the single biggest thing that derails this project" does not bite here.** All data access is server-side (route handlers only, never a component), *and* every data-bearing page is already `"use client"` and reaches the server only through `/api`. So none of options 1–3 are needed: no page converts, no subtree extracts. The refactor the guide braces for is replaced by the one-function swap in §4.2.
+
+`src/app/login/page.tsx` is the only `async` server page in the app, and §7 handles it.
+
+### §6 — boot sequence
+
+"Mount `DemoBoot` inside the authenticated layout, not the root layout" doesn't map — there is one layout (`src/app/layout.tsx`) and no marketing shell. Mount it next to `FiltersHydrator` there, or gate inside [app-chrome.tsx](src/components/app-chrome.tsx), which already branches on `/login` and `/auth`.
+
+### §7 — auth stub ⚠️ the sharpest edge in this port
+
+The guide treats this as one bypass. Here it is three places, and one of them fails in a non-obvious way:
+
+1. **`updateSession()`** in [middleware.ts](src/lib/supabase/middleware.ts), reached via `src/proxy.ts`. Deny-by-default, so it 401s/redirects everything. Needs a single early `return NextResponse.next()` **at the very top** — crucially *before* `createServerClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), …)`, because with no Supabase env vars set (§8 layer 1) `requireEnv` throws and every request 500s rather than rendering.
+2. **`getSessionUser()`** in `src/lib/auth-server.ts` has the same problem through `createClient()`. In demo no route handler is ever reached from the browser, so nothing should call it — but `/login` is a server page that does. Make `/login` unreachable in demo rather than stubbing the guard.
+3. **`signInWithGoogle` / `signOut`** in `src/lib/supabase/actions.ts` are Server Actions; both call `createClient()`. Sign-out in demo should clear the store and re-seed, never invoke these.
+
+**Do not put the bypass inside `requireUser()` / `requireOwnerForApi()`.** `CLAUDE.md` states as a hard rule that every handler starts with that call and that the cron is the *only* exception; a demo branch inside it is a second gate in the file whose entire job is to have exactly one. Leave production's gate untouched and have the demo simply never reach it — §13 already says this, but here it is a documented invariant, so note the plan in `PROGRESS.md` before touching auth.
+
+### §8 — side effects
+
+Mostly already satisfied, and one piece of the advice actively conflicts with an existing decision:
+
+- **Cron.** `vercel.json` holds exactly one cron (`/api/cron/subscriptions`, Hobby's limit). `requireCronSecret()` already returns **503 when `CRON_SECRET` is unset — fail-closed, deliberately**, and `.env.example` documents it. Layer 1 alone disables it with no code change. **Ignore the guide's "return 200, not an error" here**; a 503 is the correct, already-reasoned answer, and changing it would weaken production's fail-closed behaviour to quiet a log line in a project nobody reads the logs of.
+- **Email.** `sendEmail()` already returns `{ sent: false, reason }` when `RESEND_API_KEY` is unset and never throws (`ARCHITECTURE.md` §5). Layer 1 covers it. Still add the layer-2 guard at the two `/send` routes, so the UI toast reads "demo mode" rather than "Email not configured".
+- **Module-scope SDK init.** Nothing to find: `new Resend(apiKey)` is inside `sendEmail`, `createServiceClient()` is per-call, and there is no analytics, Sentry, feature-flag SDK, or Supabase Storage anywhere.
+
+### §9 — seed data
+
+- **"~6 months of transactions" is too short.** See §5.1 — ~13 months, or `/reports/monthly`'s projection has nothing to trim and its big-spender medians have no window.
+- **Categories are fixed and real.** `CATEGORY_OPTIONS` in `src/lib/data/types.ts` is a closed list ported from the original app. Keep the categories; invent the store names.
+- Seed **both** `Eating Out (Stressed)` and `Eating Out (Social)` — the digest renders a split between them.
+- Seed **Travel / School / Rent** (`COMPARISON_EXCLUDED_CATEGORIES`) or the report's excluded strip and the digest's big-spenders table render empty, hiding two features.
+- Seed subscriptions with `charges_generated` consistent with `start_date` and `nthChargeDate`, or the Overdue badge lights up on a fresh demo.
+- The guide's "make the empty states reachable" is easy here: leave one category unused.
+
+### §11 — branch strategy
+
+No conflict. The one-cron limit is per Vercel project, so the demo project gets its own allowance and the committed `vercel.json` needs no variant.
+
+### §12 — verification
+
+"Search the bundle for `supabase.co` / `eyJ`" **already passes today**: nothing in `src/` calls `createBrowserClient`, so the Supabase client has never been in the client bundle. Keep the check; expect it green on the first run.
+
+Three rows to add, each covering an invariant that only exists in Postgres in production:
+
+- [ ] Delete a receipt that has a refund against it → 409, blocking rows listed inline.
+- [ ] Press "Run due charges" twice → the second run is a no-op, not a double charge.
+- [ ] Step the `/reports/monthly` month picker back through every seeded month → no blank months, projection populated.
+
+### §14 — implementation order
+
+Step 2 ("add the `DataSource` interface, wrap existing Supabase calls") **is already done** — skip it. Replace with: build `DemoDataSource` against the existing interface first, since the interface is the spec and TypeScript will enumerate what's missing.
+
+### Incidental
+
+`ARCHITECTURE.md` §4 refers to a `todayISO()` helper that no longer exists in `src/lib/dates.ts` (only `todayInZone`). Noticed while deciding what "today" means in demo (§4.4); unrelated to this work, worth a line in `PROGRESS.md`.
