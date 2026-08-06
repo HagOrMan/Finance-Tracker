@@ -341,13 +341,20 @@ export function ReceiptsTable({
                 behind the net figure — kept, but off to the right where a wide
                 table scrolls them out of the way. */}
             <SortHead column="date" label="Date" sort={sort} onSort={toggleSort} />
-            <SortHead column="store" label="Store" sort={sort} onSort={toggleSort} />
+            <SortHead
+              column="store"
+              label="Store"
+              sort={sort}
+              onSort={toggleSort}
+              emphasis
+            />
             <SortHead
               column="amount"
               label={priceLabel}
               sort={sort}
               onSort={toggleSort}
               align="right"
+              emphasis
             />
             <SortHead
               column="category"
@@ -425,12 +432,13 @@ export function ReceiptsTable({
                 </TableCell>
               )}
               <TableCell>{r.date}</TableCell>
-              {/* Store and the net figure carry `font-medium` for their whole
-                  column — they're what a row is scanned for, and at `text-sm`
-                  the step up from 400 is enough to lead the eye down those two
-                  without the rest reading as greyed out. Their headers are
-                  already `font-medium`, so the weight runs the full column. */}
-              <TableCell className="font-medium">
+              {/* Store and the net figure carry `font-semibold` for their whole
+                  column, header and footer included — they're what a row is
+                  scanned for. Not `font-medium`: against the 400 the other
+                  cells inherit, 500 is a real difference in the CSS and no
+                  difference on screen at `text-sm`. 600 is the first step that
+                  actually reads as emphasis. */}
+              <TableCell className="font-semibold">
                 {r.store}
                 {editable && r.subscription_id != null && (
                   // Labels only, links nowhere: the natural target is /manage
@@ -441,7 +449,7 @@ export function ReceiptsTable({
                   </Badge>
                 )}
               </TableCell>
-              <TableCell className="text-right font-medium tabular-nums">
+              <TableCell className="text-right font-semibold tabular-nums">
                 {formatCurrency(r[priceKey])}
               </TableCell>
               <TableCell>{r.category}</TableCell>
@@ -515,7 +523,9 @@ export function ReceiptsTable({
                 Total — {filtered.length} receipt
                 {filtered.length === 1 ? "" : "s"}
               </TableCell>
-              <TableCell className="text-right tabular-nums">
+              {/* `font-semibold` over the `font-medium` the footer sets on
+                  every cell, so the net column keeps one weight top to bottom. */}
+              <TableCell className="text-right font-semibold tabular-nums">
                 {formatCurrency(totals.amount)}
               </TableCell>
               {/* Category and Note. */}
@@ -642,12 +652,15 @@ function SortHead({
   sort,
   onSort,
   align = "left",
+  emphasis = false,
 }: {
   column: SortColumn;
   label: string;
   sort: Sort;
   onSort: (column: SortColumn) => void;
   align?: "left" | "right";
+  /** A lead column — matches the heavier weight its cells carry. */
+  emphasis?: boolean;
 }) {
   const active = sort.column === column;
   const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
@@ -664,6 +677,9 @@ function SortHead({
         onClick={() => onSort(column)}
         className={cn(
           "inline-flex cursor-pointer items-center gap-1 font-medium hover:text-foreground",
+          // After `font-medium` so tailwind-merge drops the lighter one rather
+          // than emitting both and leaving the winner to source order.
+          emphasis && "font-semibold",
           active && "text-foreground",
         )}
         title={`Sort by ${label.toLowerCase()}`}
