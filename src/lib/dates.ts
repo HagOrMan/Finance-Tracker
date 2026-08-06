@@ -65,6 +65,23 @@ export const SATURDAY = 6;
 // Every one of these anchors in UTC via Date.UTC, matching the rest of the file.
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether a value is a well-formed "YYYY-MM".
+ *
+ * The boundary check for anything month-shaped arriving from a URL. Validated
+ * rather than trusted for the reason `isReportPeriod` exists: an unchecked
+ * string flows into `Number(...slice())` and becomes a silent `NaN` deep inside
+ * the digest builder instead of a 400 at the edge.
+ *
+ * Range-checks the month, so "2026-13" and "2026-00" are rejected — both parse
+ * happily as Date arithmetic and would quietly resolve to a different year.
+ */
+export function isMonthKey(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}$/.test(value)) return false;
+  const month = Number(value.slice(5, 7));
+  return month >= 1 && month <= 12;
+}
+
 /** The "YYYY-MM" a plain date falls in. Pure slicing — no parsing at all. */
 export function monthKeyOf(dateISO: string): string {
   return dateISO.slice(0, 7);

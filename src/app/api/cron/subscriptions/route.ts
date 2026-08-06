@@ -1,10 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { APP_TIMEZONE } from "@/lib/config";
+import { APP_TIMEZONE, DIGEST_SEND_DAY_OF_MONTH } from "@/lib/config";
 import { invalidateSubscriptionCharges } from "@/lib/data/cache";
 import { dayOfWeekUTC, SATURDAY, todayInZone } from "@/lib/dates";
 import { sendSubscriptionRunEmail } from "@/lib/email";
+import {
+  sendMonthlyDigest,
+  type DigestSendOutcome,
+} from "@/lib/monthly-digest-runner";
 import { sendSpendingReport, type ReportSendOutcome } from "@/lib/reports-runner";
 import { runDueSubscriptionCharges } from "@/lib/subscriptions-runner";
 
@@ -15,17 +19,22 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * The daily cron. **It does two things**, and the name undersells the second:
+ * The daily cron. **It does three things**, and the name undersells two of them:
  *
  * 1. Writes every subscription charge that is due (ARCHITECTURE.md).
  * 2. On Saturdays, mails the weekly spending report (ARCHITECTURE.md).
+ * 3. On the 3rd, mails the previous month's digest (ARCHITECTURE.md).
  *
- * The report lives here rather than in its own `/api/cron/*` route because
+ * All three live here rather than in their own `/api/cron/*` routes because
  * Vercel Hobby allows exactly one cron, which ARCHITECTURE.md already
  * anticipated: "anything else that ever needs scheduling has to be folded into
  * this same handler". Reusing this route also avoids a second `PUBLIC_PATHS`
  * entry — the deny-by-default proxy would 401 a new cron route before its
  * handler ran, and the schedule would silently never fire.
+ *
+ * **The 3rd is a Saturday roughly one month in seven, and both emails send.**
+ * They are different lenses, and suppressing either would break the rule the
+ * weekly report leans on: that a silent Saturday means the cron is broken.
  *
  * ⚠️ **The one route handler in this app that does not call
  * `requireOwnerForApi()`** — there is no session on a cron invocation, so there
@@ -72,13 +81,19 @@ export async function GET(request: Request) {
     invalidateSubscriptionCharges();
     await sendSubscriptionRunEmail(result);
 
-    // Then the report — never before, and never in a way that can change the
+    // Then the summaries — never before, and never in a way that can change the
     // status this route returns. The charges are the part that must not be
     // re-run by a retry.
+    //
+    // Sequential rather than `Promise.all`: on the ~1-in-7 days both fire, they
+    // both re-read the ledger, and running them concurrently would have two
+    // uncached reads racing to repopulate the same cache entry. Nothing is
+    // waiting on this job, so the few hundred milliseconds cost nothing.
     const weeklyReport = await maybeSendWeeklyReport();
+    const monthlyDigest = await maybeSendMonthlyDigest();
 
     // Returned as JSON so the run is readable in the Vercel function logs.
-    return NextResponse.json({ ...result, weeklyReport });
+    return NextResponse.json({ ...result, weeklyReport, monthlyDigest });
   } catch (error) {
     console.error("[cron/subscriptions] Run failed:", error);
     return NextResponse.json(
@@ -129,6 +144,55 @@ async function maybeSendWeeklyReport(): Promise<ReportSendOutcome> {
       sent: false,
       subject: null,
       reason: error instanceof Error ? error.message : "Weekly report failed",
+    };
+  }
+}
+
+/**
+ * The 3rd-of-the-month send (ARCHITECTURE.md).
+ *
+ * **Only this function knows about the 3rd**, exactly as only
+ * `maybeSendWeeklyReport` knows about Saturday. `buildMonthlyDigest` takes a
+ * month and a date and has no opinion about the calendar, which is what lets the
+ * same code path serve the page's month picker on any day.
+ *
+ * **The 3rd rather than the 1st** because receipts are entered as they happen,
+ * so the last days of a month are the least likely to be on the ledger the
+ * moment it closes. The lookback is a fixed calendar month either way, so the
+ * grace costs nothing — and a digest is a lens, so a receipt entered on the 2nd
+ * would otherwise be absent from it forever rather than corrected later.
+ *
+ * **Sends every month, including an empty one**, for the reason the weekly
+ * report does: a summary that only arrives when something happened is
+ * indistinguishable from a broken cron.
+ *
+ * **No catch-up.** A missed 3rd stays missed — catching up would mean
+ * remembering when the last one went out, which means persisted state, which
+ * would turn a lens into a generator. Recovery is the month picker on
+ * `/reports/monthly`.
+ *
+ * The month is left to the runner, which derives "the month before today". Two
+ * places deciding that is exactly the disagreement the runner exists to prevent.
+ */
+async function maybeSendMonthlyDigest(): Promise<DigestSendOutcome> {
+  try {
+    const today = todayInZone(APP_TIMEZONE);
+    if (Number(today.slice(8, 10)) !== DIGEST_SEND_DAY_OF_MONTH) {
+      // One shape on every path, so the log line is greppable rather than
+      // sometimes carrying a `subject` key and sometimes not.
+      return { sent: false, subject: null, reason: "not-digest-day" };
+    }
+    // `fresh: true` for a subtler reason than the weekly report's: a charge
+    // written minutes ago is dated today, which is in the *current* month and
+    // therefore outside this digest's window — except when it is a backfill of
+    // an overdue charge, which lands dated in the month being reported on.
+    return await sendMonthlyDigest({ today, fresh: true });
+  } catch (error) {
+    console.error("[cron/subscriptions] Monthly digest failed:", error);
+    return {
+      sent: false,
+      subject: null,
+      reason: error instanceof Error ? error.message : "Monthly digest failed",
     };
   }
 }

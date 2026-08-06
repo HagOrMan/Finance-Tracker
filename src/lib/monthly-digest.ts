@@ -1048,6 +1048,23 @@ const MONTH_ABBR = [
 ];
 
 /**
+ * "$1,450", "-$32", or "—" for null.
+ *
+ * **No cents.** Seven columns of "$1,450.00" do not fit a 600px email, and the
+ * grid and the projection are both about shape rather than reconciliation —
+ * `formatCurrency` is still used everywhere a figure is meant to be exact.
+ *
+ * Here rather than in either renderer so the page and the email round the same
+ * way. A number rounded two ways in two places is a bug waiting for someone to
+ * compare a screenshot against an inbox.
+ */
+export function formatCompact(value: number | null): string {
+  if (value === null) return "—";
+  const rounded = Math.round(value);
+  return `${rounded < 0 ? "-" : ""}$${Math.abs(rounded).toLocaleString("en-US")}`;
+}
+
+/**
  * "Jul" — the grid's column header. Pure string work, per `CLAUDE.md`'s date
  * rule, and falls back to the raw key rather than rendering "undefined".
  */

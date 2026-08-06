@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Mail } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -66,19 +67,32 @@ export default function ReportsPage() {
         <h1 className="text-2xl font-semibold text-foreground">
           📊 Spending reports
         </h1>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onSend}
-          // Also disabled on stale data: the server would rebuild for the right
-          // period anyway, but a button that sends something other than what is
-          // on screen is a button that will eventually surprise someone.
-          disabled={sendReport.isPending || !report || isPlaceholderData}
-          title="Emails exactly the report shown below"
-        >
-          <Mail />
-          {sendReport.isPending ? "Sending…" : "Send to email"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Linked from here rather than added to `Nav`: that row is already
+              at seven inline links on desktop, and its own comment flags an
+              eighth as the one to watch. The digest is a second lens on the
+              same question, so this is where you'd look for it anyway. */}
+          <Link
+            href="/reports/monthly"
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            🗓️ Monthly digest
+            <ArrowRight className="size-3.5" />
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onSend}
+            // Also disabled on stale data: the server would rebuild for the right
+            // period anyway, but a button that sends something other than what is
+            // on screen is a button that will eventually surprise someone.
+            disabled={sendReport.isPending || !report || isPlaceholderData}
+            title="Emails exactly the report shown below"
+          >
+            <Mail />
+            {sendReport.isPending ? "Sending…" : "Send to email"}
+          </Button>
+        </div>
       </div>
 
       <Tabs

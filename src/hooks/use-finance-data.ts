@@ -21,6 +21,7 @@ import type {
 } from "@/lib/data/types";
 // From the pure modules, not the `*-runner` ones — those are `server-only`.
 import type { SubscriptionRunResult } from "@/lib/subscriptions";
+import type { MonthlyDigest } from "@/lib/monthly-digest";
 import type { ReportPeriod, SpendingReport } from "@/lib/reports";
 
 /**
@@ -392,6 +393,50 @@ export function useSendSpendingReport() {
       postJSON<{ sent: boolean; subject: string | null; reason?: string }>(
         "/api/reports/send",
         { period },
+      ),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Monthly digest (ARCHITECTURE.md)
+//
+// Fetched for the reasons above and one more: the projection reads the
+// subscription *schedule*, and under Pattern A nothing in the browser can see
+// it. Even a client willing to get "today" wrong could not build this one.
+// ---------------------------------------------------------------------------
+
+/**
+ * `"latest"` rather than `undefined` in the key: an undefined segment makes
+ * TanStack Query's key serialization collapse it against the no-argument case,
+ * so the newest month and an explicitly-picked one could share a cache entry.
+ */
+const DIGEST_KEY = (month?: string) => ["monthly-digest", month ?? "latest"];
+
+export function useMonthlyDigest(month?: string) {
+  return useQuery({
+    queryKey: DIGEST_KEY(month),
+    queryFn: () =>
+      fetchJSON<MonthlyDigest>(
+        month ? `/api/reports/monthly?month=${month}` : "/api/reports/monthly",
+      ),
+    // Keeps the previous month on screen while the next loads, so stepping
+    // through months doesn't flash back to a skeleton each time.
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * Sends the digest for a month.
+ *
+ * Invalidates nothing, for the same reason as the report: sending changes no
+ * data anywhere. Posts only the month — the server rebuilds from the ledger.
+ */
+export function useSendMonthlyDigest() {
+  return useMutation({
+    mutationFn: (month: string) =>
+      postJSON<{ sent: boolean; subject: string | null; reason?: string }>(
+        "/api/reports/monthly/send",
+        { month },
       ),
   });
 }

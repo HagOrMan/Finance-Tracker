@@ -13,7 +13,12 @@ are live. The SQLite→Supabase backfill has run; all three migrations in
 `supabase/migrations/` have been applied.
 
 Routes: `/` `/daily` `/monthly` `/categories` `/savings` `/disbursements`
-`/reports` · `/stores` `/manage` `/subscriptions` behind the "Manage ▾" menu.
+`/reports` `/reports/monthly` · `/stores` `/manage` `/subscriptions` behind the
+"Manage ▾" menu.
+
+`/reports/monthly` is reached by a link on `/reports`, **not** a `Nav` entry —
+that row is already at seven inline links and its own comment flags an eighth as
+the one to watch.
 
 **Reads are cached server-side** as of the caching pass: `src/lib/data/cache.ts`
 puts Next's tagged Data Cache in front of every list read, write routes
@@ -22,17 +27,24 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
 
 ## Open
 
-1. **Monthly digest — in progress.** A second report lens, calendar-month based,
-   mailed on the 3rd and viewable at `/reports/monthly` with a month picker.
-   Every design decision is settled and recorded in `ARCHITECTURE.md`
-   ("Monthly digest"); read that before touching it. Build order:
-   `src/lib/monthly-digest.ts` (pure model) → `monthly-digest-runner.ts` →
-   `src/lib/email/monthly-digest.ts` → the cron branch → the page.
-   - Sections: net-position headline · big spenders (absorbs the excluded
-     strip) · category × month grid, 6 months · projection for next month and
-     next 4 · income per entity · top 5 stores · frequency-vs-ticket
-     decomposition, quiet wins, Stressed/Social ratio, savings YTD.
-   - New config constants land in `src/lib/config.ts` beside `REPORT_PERIODS`.
+1. **Monthly digest — written, not yet seen against real data.** Model, runner,
+   email, cron branch, API routes and page are all in. The reasoning behind
+   every decision is in `ARCHITECTURE.md` ("Monthly digest") — read that before
+   changing any of it. What still needs a human:
+   - **Look at one real digest** before the cron sends one unprompted. Open
+     `/reports/monthly`, then use "Send to email" and read it in Gmail on a
+     phone — the 7-column grid is the part most likely to need the row cap
+     lowered, and nothing but a real inbox will show that.
+   - **Sanity-check the big-spender thresholds against a real month.** The
+     $150 floor and the 3× category multiple are guesses until a month's rows
+     are looked at; both are constants in `src/lib/config.ts`.
+   - **Confirm the first 3rd-of-month firing** in the Vercel logs. The run JSON
+     carries `monthlyDigest`, which reads
+     `{ sent: false, subject: null, reason: "not-digest-day" }` on every other
+     day — that line exists so a broken send is diagnosable rather than silent.
+   - The projection needs a few complete months behind it before it says
+     anything; below 5 usable months it falls back to the median and reports
+     that it did.
 2. **Read one cron firing's run JSON** in the Vercel function logs. On a
    non-Saturday it should carry
    `weeklyReport: { sent: false, subject: null, reason: "not-saturday" }` —

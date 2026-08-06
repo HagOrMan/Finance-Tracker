@@ -21,4 +21,11 @@ export {
   sendSpendingReportEmail,
 } from "./spending-report";
 
+export {
+  buildDigestHtml,
+  buildDigestText,
+  digestSubject,
+  sendMonthlyDigestEmail,
+} from "./monthly-digest";
+
 export { reportRecipient, subscriptionRecipient, type SendResult } from "./send";
