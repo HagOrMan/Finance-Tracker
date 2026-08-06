@@ -36,6 +36,7 @@ export const EMAIL_COLORS = {
   text: "#151f28",
   muted: "#547383",
   faint: "#7a8f99",
+  /** The card's outer edge against the page tint. **Not** for rules inside a card — use `rule`. */
   border: "#dce7e8",
   /**
    * Row separators inside a section — deliberately darker than `border`.
@@ -143,13 +144,20 @@ export function barHtml(
   ].join("");
 }
 
-/** A titled block on a white card — the repeating unit of both templates. */
+/**
+ * A titled block on a white card — the repeating unit of both templates.
+ *
+ * The section divider is `rule`, not `border`: `border` is tuned for the card's
+ * outer edge against the page tint and is very nearly invisible used as a line
+ * on white. Nobody noticed for a long time because it was being discarded
+ * entirely along with the rest of the styling (ARCHITECTURE.md §6).
+ */
 export function sectionHtml(heading: string | null, inner: string): string {
   const headingHtml = heading
     ? `<div style="margin:0 0 12px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${EMAIL_COLORS.muted};background-color:${EMAIL_COLORS.cardBg};">${escapeHtml(heading)}</div>`
     : "";
   return [
-    `<tr><td style="padding:20px;background-color:${EMAIL_COLORS.cardBg};border-bottom:1px solid ${EMAIL_COLORS.border};">`,
+    `<tr><td style="padding:20px;background-color:${EMAIL_COLORS.cardBg};border-bottom:2px solid ${EMAIL_COLORS.rule};">`,
     headingHtml,
     inner,
     `</td></tr>`,

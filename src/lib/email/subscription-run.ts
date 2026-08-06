@@ -73,9 +73,9 @@ function buildHtml(result: SubscriptionRunResult): string {
       .map(
         (c) =>
           `<tr>
-             <td style="${body}padding:6px 0;border-bottom:1px solid ${C.border};">${escapeHtml(c.date)}</td>
-             <td style="${body}padding:6px 0;border-bottom:1px solid ${C.border};">${escapeHtml(c.name)}</td>
-             <td align="right" style="${body}padding:6px 0;border-bottom:1px solid ${C.border};">${formatCurrency(c.price)}</td>
+             <td style="${body}padding:6px 0;border-bottom:1px solid ${C.rule};">${escapeHtml(c.date)}</td>
+             <td style="${body}padding:6px 0;border-bottom:1px solid ${C.rule};">${escapeHtml(c.name)}</td>
+             <td align="right" style="${body}padding:6px 0;border-bottom:1px solid ${C.rule};">${formatCurrency(c.price)}</td>
            </tr>`,
       )
       .join("");
@@ -84,9 +84,9 @@ function buildHtml(result: SubscriptionRunResult): string {
         "Charges recorded",
         `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
            <tr>
-             <th align="left" style="${note}padding:0 0 6px;border-bottom:1px solid ${C.border};">Date</th>
-             <th align="left" style="${note}padding:0 0 6px;border-bottom:1px solid ${C.border};">Subscription</th>
-             <th align="right" style="${note}padding:0 0 6px;border-bottom:1px solid ${C.border};">Price</th>
+             <th align="left" style="${note}padding:0 0 6px;border-bottom:1px solid ${C.rule};">Date</th>
+             <th align="left" style="${note}padding:0 0 6px;border-bottom:1px solid ${C.rule};">Subscription</th>
+             <th align="right" style="${note}padding:0 0 6px;border-bottom:1px solid ${C.rule};">Price</th>
            </tr>
            ${rows}
            <tr>

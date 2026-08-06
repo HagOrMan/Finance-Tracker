@@ -45,10 +45,14 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
      `layout.ts` (single quotes) and recorded in `ARCHITECTURE.md` §6. The
      density and weight passes made before this was found were never actually
      rendering; spacing has since been dialled back to what it was originally
-     meant to be (`ROW_PADDING` 12px, 20px sections). **The weekly report and
-     subscription-run mails still need a look** — they use the same `base`
-     pattern, so they were unstyled too and nobody has seen them rendered
-     correctly yet.
+     meant to be (`ROW_PADDING` 12px, 20px sections).
+   - **All three templates have had the follow-up pass**, since all three were
+     unstyled: `EMAIL_COLORS.border` is now only the card's outer edge and
+     `EMAIL_COLORS.rule` is every line inside one, separators are filled cells
+     rather than borders, and hint text sets `font-weight` explicitly so it
+     doesn't inherit from the bold labels above it. **Send yourself a weekly
+     report and trigger a subscription run** — nobody has seen either rendered
+     correctly, so their spacing may want the same dial-back the digest needed.
    - **Gmail was collapsing sections behind a "…" expander** — thread grouping
      across repeated sends, not clipping. Fixed for *all three* email types by
      a unique `X-Entity-Ref-ID` header in `send.ts`. Worth confirming the
