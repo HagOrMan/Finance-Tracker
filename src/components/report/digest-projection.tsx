@@ -30,8 +30,10 @@ import {
  *   schedule, so there is nothing here to extrapolate from — hence the label on
  *   the total, which stops a figure that omits the largest cost reading as a
  *   cost of living.
- * - **One-offs** are stripped from the baseline and shown as a buffer instead.
- *   They can't be forecast, which is not the same as not happening.
+ * - **One-offs** are stripped from the baseline. The buffer that replaces them
+ *   is explained under Big spenders instead of here, because that table *is*
+ *   the evidence for it — a one-off is a big spender in a habitual category
+ *   that isn't a subscription, and the number means nothing without the rows.
  *
  * The ranges are the middle half of the baseline months, and the multi-month
  * band widens as √n rather than n — good and bad months partly cancel, so
@@ -104,21 +106,6 @@ export function DigestProjection({ digest }: { digest: MonthlyDigest }) {
             </TableRow>
           </TableBody>
         </Table>
-      </div>
-
-      <div className="rounded-lg border border-border bg-card p-4">
-        <p className="text-sm text-foreground">
-          Set aside about{" "}
-          <span className="font-semibold tabular-nums">
-            {formatCurrency(p.oneOffBuffer)}
-          </span>{" "}
-          a month for one-offs.
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          They&rsquo;re stripped from every figure above because they can&rsquo;t
-          be forecast — which isn&rsquo;t the same as not happening. This is what
-          they&rsquo;ve actually averaged.
-        </p>
       </div>
 
       <p className="text-xs text-muted-foreground">

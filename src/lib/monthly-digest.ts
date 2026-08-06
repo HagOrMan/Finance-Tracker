@@ -22,7 +22,6 @@ import {
   BIG_SPENDER,
   DIGEST_BASELINE_MONTHS,
   DIGEST_MAX_GRID_CATEGORIES,
-  DIGEST_QUIET_WIN_THRESHOLD,
   DIGEST_TOP_STORES,
   EATING_OUT_SOCIAL,
   EATING_OUT_STRESSED,
@@ -156,17 +155,33 @@ export interface Projection {
   /** habitual + subscriptions. Excludes rent, school and travel by construction. */
   nextMonthTotal: ProjectionTotal;
   horizonTotal: ProjectionTotal;
+}
 
-  /**
-   * Average monthly one-off spend in *habitual* categories over the baseline.
-   *
-   * Deliberately **outside** every total above: one-offs are unforecastable, but
-   * "unforecastable" is not "won't happen", and a budget built without a buffer
-   * is short every time a car repair lands. Excluded-category one-offs are not
-   * counted — the projection already says it omits rent, school and travel, so
-   * folding tuition in here would double-count the omission.
-   */
-  oneOffBuffer: number;
+/**
+ * The one-off spend stripped out of the projection, with the numbers behind it.
+ *
+ * A one-off is exactly **a big spender in a habitual category that isn't a
+ * subscription** — the same rule, over the baseline months. That means every
+ * figure here describes a set of rows the reader can actually see the shape of
+ * in the big-spenders table, which is why the renderers put this next to it
+ * rather than next to the projection it modifies.
+ *
+ * Reported rather than merely applied because "set aside $210" is an assertion
+ * until it says what it counted. `perMonth` is the buffer: unforecastable is not
+ * the same as won't-happen, and a budget built from habitual spend alone is
+ * short every time a car repair lands.
+ *
+ * Excluded-category one-offs are **not** counted — the projection already says
+ * it omits rent, school and travel, so folding tuition in would double-count
+ * the omission.
+ */
+export interface OneOffSummary {
+  total: number;
+  count: number;
+  /** Usable baseline months this was measured over. */
+  months: number;
+  /** `total / months`, or 0 when there is no usable baseline. */
+  perMonth: number;
 }
 
 export interface NamedTotal {
@@ -187,6 +202,13 @@ export interface NamedTotal {
  *
  * **One-offs are stripped from both sides.** They have their own table, and a
  * single brake job would otherwise read as a ruinous rise in average ticket.
+ *
+ * **Both directions belong here.** Rows are ranked by absolute change, so a
+ * category that fell is as eligible as one that rose — the renderers split them
+ * into spent-more and spent-less groups. There is deliberately no separate
+ * "quiet wins" list: it was computed from this same baseline and reported the
+ * same categories a second time, in a second phrasing, which is what made both
+ * of them hard to read.
  */
 export interface CategoryChangeRow {
   category: string;
@@ -205,14 +227,6 @@ export interface CategoryChangeRow {
   frequencyEffect: number;
   /** Portion from each visit costing more or less. */
   ticketEffect: number;
-}
-
-export interface QuietWinRow {
-  category: string;
-  spent: number;
-  baseline: number;
-  /** Negative — this is the amount it came in under. */
-  delta: number;
 }
 
 export interface EatingOutSplit {
@@ -243,12 +257,18 @@ export interface MonthlyDigest {
 
   savings: { month: number; yearToDate: number };
 
+  /**
+   * No subtotals alongside this. `inHabitual` already marks each row, so an
+   * in-habitual/excluded split under the table restated the badges in a form
+   * that invited adding them up — and an all-in footer could only ever repeat
+   * `net.allInSpent`, which is the headline.
+   */
   bigSpenders: BigSpenderRow[];
-  /** Split so the table can foot to two subtotals plus the all-in line. */
-  bigSpenderTotals: { habitual: number; excluded: number };
 
   grid: CategoryMonthGrid;
   projection: Projection;
+  /** What the projection left out, and what it was measured from. */
+  oneOffs: OneOffSummary;
 
   /** Unlinked disbursements only — a refund already reduced the spend figure. */
   income: { total: number; count: number; entities: NamedTotal[] };
@@ -257,7 +277,6 @@ export interface MonthlyDigest {
   topStores: NamedTotal[];
 
   changes: CategoryChangeRow[];
-  quietWins: QuietWinRow[];
   eatingOut: EatingOutSplit | null;
 }
 
@@ -665,6 +684,8 @@ export function buildMonthlyDigest(
   // same rules that built the table above. Habitual categories only — the
   // excluded ones are outside the projection entirely.
   const oneOffsByMonth = new Map<string, Map<string, number>>();
+  let oneOffTotal = 0;
+  let oneOffCount = 0;
   for (const slice of usableBaselines) {
     const perCategory = new Map<string, number>();
     for (const row of bigSpendersIn(slice, medians)) {
@@ -673,9 +694,22 @@ export function buildMonthlyDigest(
         row.category,
         (perCategory.get(row.category) ?? 0) + row.amount,
       );
+      oneOffTotal += row.amount;
+      oneOffCount += 1;
     }
     oneOffsByMonth.set(slice.month, perCategory);
   }
+
+  // `total / months`, which is the mean of the per-month sums because a month
+  // with no one-offs contributes a zero rather than being skipped. Reported as
+  // three numbers rather than one so the buffer can say what it counted.
+  const oneOffs: OneOffSummary = {
+    total: oneOffTotal,
+    count: oneOffCount,
+    months: usableBaselines.length,
+    perMonth:
+      usableBaselines.length > 0 ? oneOffTotal / usableBaselines.length : 0,
+  };
 
   const currentOneOffs = new Map<string, number>();
   for (const row of bigSpenders) {
@@ -835,17 +869,6 @@ export function buildMonthlyDigest(
       low: horizonHabitual - spread * lowHalf + subscriptionsHorizon,
       high: horizonHabitual + spread * highHalf + subscriptionsHorizon,
     },
-    oneOffBuffer:
-      usableBaselines.length > 0
-        ? mean(
-            usableBaselines.map((slice) =>
-              sumBy(
-                [...(oneOffsByMonth.get(slice.month)?.values() ?? [])],
-                (v) => v,
-              ),
-            ),
-          )
-        : 0,
   };
 
   // ---- income --------------------------------------------------------------
@@ -859,10 +882,9 @@ export function buildMonthlyDigest(
       d.date_received <= end,
   );
 
-  // ---- changes, quiet wins -------------------------------------------------
+  // ---- changes -------------------------------------------------------------
 
   const changes: CategoryChangeRow[] = [];
-  const quietWins: QuietWinRow[] = [];
 
   for (const category of gridCategories) {
     const series = usableBaselines.map((slice) =>
@@ -871,34 +893,37 @@ export function buildMonthlyDigest(
     if (series.length === 0) continue;
 
     const baselineSpent = estimate(series).value;
-    const oneOffsRemoved = currentOneOffs.get(category) ?? 0;
-    const spent = habitualExOneOffs(current, category);
-
-    if (baselineSpent > 0) {
-      const drop = (baselineSpent - spent) / baselineSpent;
-      if (drop >= DIGEST_QUIET_WIN_THRESHOLD) {
-        quietWins.push({
-          category,
-          spent,
-          baseline: baselineSpent,
-          delta: spent - baselineSpent,
-        });
-      }
-    }
-
     const receiptCount = current.categoryCount.get(category) ?? 0;
     const baselineCount = mean(
       usableBaselines.map((slice) => slice.categoryCount.get(category) ?? 0),
     );
-    // No visits on one side means there is no average ticket to compare, and a
-    // decomposition of "went from nothing to something" is just the total.
-    if (receiptCount === 0 || baselineCount === 0) continue;
 
-    const avgTicket = spent / receiptCount;
+    // A category with no baseline visits is new, and "went from nothing to
+    // something" is just the total — there is no typical month to compare it
+    // against, which is what every field below is relative to.
+    if (baselineCount === 0) continue;
+
+    const spent = habitualExOneOffs(current, category);
+    const oneOffsRemoved = currentOneOffs.get(category) ?? 0;
+
     // Derived from the estimated spend rather than averaged separately, so
     // baselineCount × baselineAvgTicket === baselineSpent exactly and the two
     // effects sum to the delta with no residual.
     const baselineAvgTicket = baselineSpent / baselineCount;
+
+    // Skipping the category entirely is the largest possible drop, and it must
+    // not fall out of the list for want of a divisor. There is no average
+    // ticket for zero visits, so the whole change *is* frequency — which is
+    // exactly true, and keeps the two effects summing to the delta.
+    const avgTicket = receiptCount === 0 ? 0 : spent / receiptCount;
+    const frequencyEffect =
+      receiptCount === 0
+        ? spent - baselineSpent
+        : (receiptCount - baselineCount) * ((baselineAvgTicket + avgTicket) / 2);
+    const ticketEffect =
+      receiptCount === 0
+        ? 0
+        : (avgTicket - baselineAvgTicket) * ((baselineCount + receiptCount) / 2);
 
     changes.push({
       category,
@@ -910,15 +935,14 @@ export function buildMonthlyDigest(
       avgTicket,
       baselineAvgTicket,
       deltaSpent: spent - baselineSpent,
-      frequencyEffect:
-        (receiptCount - baselineCount) * ((baselineAvgTicket + avgTicket) / 2),
-      ticketEffect:
-        (avgTicket - baselineAvgTicket) * ((baselineCount + receiptCount) / 2),
+      frequencyEffect,
+      ticketEffect,
     });
   }
 
+  // Absolute change, so a category that fell ranks alongside one that rose. The
+  // renderers split the list by sign rather than re-sorting it.
   changes.sort((a, b) => Math.abs(b.deltaSpent) - Math.abs(a.deltaSpent));
-  quietWins.sort((a, b) => a.delta - b.delta);
 
   // ---- eating out ----------------------------------------------------------
 
@@ -991,19 +1015,10 @@ export function buildMonthlyDigest(
     },
 
     bigSpenders,
-    bigSpenderTotals: {
-      habitual: sumBy(
-        bigSpenders.filter((r) => r.inHabitual),
-        (r) => r.amount,
-      ),
-      excluded: sumBy(
-        bigSpenders.filter((r) => !r.inHabitual),
-        (r) => r.amount,
-      ),
-    },
 
     grid,
     projection,
+    oneOffs,
 
     income: {
       total: receivedTotal,
@@ -1024,7 +1039,6 @@ export function buildMonthlyDigest(
     ).slice(0, DIGEST_TOP_STORES),
 
     changes,
-    quietWins,
     eatingOut,
   };
 }
@@ -1108,8 +1122,25 @@ export function bigSpenderReasonLabel(row: BigSpenderRow): string {
   return `${Math.round(row.shareOfAllIn * 100)}% of the month`;
 }
 
+/**
+ * "$17 this month · $76 typical" — the two figures the change is the difference
+ * between.
+ *
+ * Shown instead of the bare gap because "$59 under" names neither number it came
+ * from, and the reader has no way to tell whether it means a total or a per-visit
+ * amount. `baselineSpent` is the same value the projection prints as that
+ * category's per-month estimate, so the two sections reconcile on sight.
+ */
+export function changeComparisonLabel(row: CategoryChangeRow): string {
+  return `${formatCompact(row.spent)} this month · ${formatCompact(row.baselineSpent)} typical`;
+}
+
 /** "went 4 more times" / "each visit cost $12 more" — whichever effect dominates. */
 export function changeDriverLabel(row: CategoryChangeRow): string {
+  // No visits at all: there is no average ticket, and "skipped 3.0 visits"
+  // reads as arithmetic rather than as what happened.
+  if (row.receiptCount === 0) return "didn't go at all";
+
   const frequency = Math.abs(row.frequencyEffect);
   const ticket = Math.abs(row.ticketEffect);
   const visits = row.receiptCount - row.baselineCount;

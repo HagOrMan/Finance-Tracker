@@ -8,6 +8,7 @@ import { DigestProjection } from "@/components/report/digest-projection";
 import { ProportionBar } from "@/components/report/proportion-bar";
 import { formatCurrency } from "@/lib/format";
 import {
+  changeComparisonLabel,
   changeDriverLabel,
   formatCompact,
   formatMonthLong,
@@ -15,9 +16,13 @@ import {
 } from "@/lib/monthly-digest";
 import { cn } from "@/lib/utils";
 
-/** Matches the email's caps so the two surfaces show the same rows. */
-const MAX_CHANGE_ROWS = 6;
-const MAX_QUIET_WINS = 4;
+/**
+ * Matches the email's cap so the two surfaces show the same rows. Per
+ * direction, not overall — a month where everything rose would otherwise push
+ * every decrease off the list, which is the failure the old separate
+ * "quiet wins" section existed to patch.
+ */
+const MAX_MOVERS_PER_DIRECTION = 4;
 
 /**
  * A whole monthly digest, rendered.
@@ -267,63 +272,37 @@ function TopStores({ digest }: { digest: MonthlyDigest }) {
 /**
  * What moved, and *why* it moved.
  *
+ * **Both directions, in one section.** There used to be a separate "quiet wins"
+ * list, but it was computed from this same baseline and named the same
+ * categories a second time in a second phrasing — which is most of why neither
+ * was readable. Splitting one ranked list by sign says the same thing once.
+ *
+ * Every row shows the two figures its change is the difference between, because
+ * "$59 under" names neither of them and gives the reader no way to tell whether
+ * it means a total or a per-visit amount. The "typical" figure is the same one
+ * What-to-expect prints per month, so the sections reconcile on sight.
+ *
  * The frequency-versus-ticket split is the actionable half: you can't decide to
  * spend less per meal, but you can decide to go one fewer time. One-offs are
  * stripped from both sides so a single brake job doesn't read as a ruinous rise
  * in average ticket — it has its own table.
  */
 function Movers({ digest }: { digest: MonthlyDigest }) {
-  const changes = digest.changes.slice(0, MAX_CHANGE_ROWS);
-  const wins = digest.quietWins.slice(0, MAX_QUIET_WINS);
+  const up = digest.changes
+    .filter((row) => row.deltaSpent > 0)
+    .slice(0, MAX_MOVERS_PER_DIRECTION);
+  const down = digest.changes
+    .filter((row) => row.deltaSpent < 0)
+    .slice(0, MAX_MOVERS_PER_DIRECTION);
   const eating = digest.eatingOut;
 
-  if (changes.length === 0 && wins.length === 0 && !eating) return null;
+  if (up.length === 0 && down.length === 0 && !eating) return null;
 
   return (
     <Section title="What moved">
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-        {changes.length > 0 && (
-          <dl className="flex flex-col gap-2 text-sm">
-            {changes.map((row) => {
-              const up = row.deltaSpent >= 0;
-              return (
-                <div
-                  key={row.category}
-                  className="flex items-baseline justify-between gap-4"
-                >
-                  <dt className="truncate text-foreground" title={row.category}>
-                    {row.category}
-                    <div className="text-xs text-muted-foreground">
-                      {changeDriverLabel(row)} · {row.receiptCount} vs{" "}
-                      {row.baselineCount.toFixed(1)} typical
-                    </div>
-                  </dt>
-                  <dd
-                    className={cn(
-                      "shrink-0 font-medium tabular-nums",
-                      up ? "text-destructive" : "text-primary",
-                    )}
-                  >
-                    {up ? "+" : "−"}
-                    {formatCompact(Math.abs(row.deltaSpent))}
-                  </dd>
-                </div>
-              );
-            })}
-          </dl>
-        )}
-
-        {wins.length > 0 && (
-          <p className="border-t border-border pt-3 text-sm text-muted-foreground">
-            <span className="font-medium text-primary">Quiet wins</span> —{" "}
-            {wins
-              .map(
-                (win) =>
-                  `${win.category} ${formatCompact(Math.abs(win.delta))} under`,
-              )
-              .join(", ")}
-          </p>
-        )}
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
+        <MoverGroup title="Spent more" rows={up} rising />
+        <MoverGroup title="Spent less" rows={down} />
 
         {eating && eating.stressedShare !== null && (
           <div className="border-t border-border pt-3 text-sm text-muted-foreground">
@@ -340,5 +319,60 @@ function Movers({ digest }: { digest: MonthlyDigest }) {
         )}
       </div>
     </Section>
+  );
+}
+
+function MoverGroup({
+  title,
+  rows,
+  rising = false,
+}: {
+  title: string;
+  rows: MonthlyDigest["changes"];
+  /** Drives the sign and the colour. A prop, not inferred from `title`. */
+  rising?: boolean;
+}) {
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h4
+        className={cn(
+          "text-xs font-medium tracking-wide uppercase",
+          rising ? "text-destructive" : "text-primary",
+        )}
+      >
+        {title}
+      </h4>
+      <dl className="flex flex-col gap-2 text-sm">
+        {rows.map((row) => (
+          <div
+            key={row.category}
+            className="flex items-baseline justify-between gap-4"
+          >
+            <dt className="min-w-0 text-foreground">
+              <div className="truncate" title={row.category}>
+                {row.category}
+              </div>
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {changeComparisonLabel(row)}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {changeDriverLabel(row)}
+              </div>
+            </dt>
+            <dd
+              className={cn(
+                "shrink-0 font-medium tabular-nums",
+                rising ? "text-destructive" : "text-primary",
+              )}
+            >
+              {rising ? "+" : "−"}
+              {formatCompact(Math.abs(row.deltaSpent))}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }

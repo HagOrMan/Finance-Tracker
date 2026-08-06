@@ -343,6 +343,11 @@ digest asks "what did last month cost and what should I expect next".
 - **One-offs are stripped from the baseline, then reported as their own monthly
   average.** "Unforecastable" is not "won't happen" — a budget built from
   habitual spend alone is short every time a car repair lands.
+- **The buffer is explained under Big spenders, not under the projection it
+  modifies.** A one-off is *exactly* a big spender in a habitual category that
+  isn't a subscription, so that table is the evidence for the number. `oneOffs`
+  carries total, count and months rather than just the mean, because "set aside
+  $210" is an assertion until it says what it counted.
 - **Multi-month spreads widen as √n·sd, not n·sd.** Monthly deviations are close
   to independent and partly cancel, so scaling the range linearly overstates the
   4-month figure by roughly 2×. That total is the number actually budgeted
@@ -366,12 +371,48 @@ digest asks "what did last month cost and what should I expect next".
   not be stripped from the forecast baseline, because it recurs.
 - **Travel/School/Rent get no separate section here.** They are always big
   spenders, so they are itemized in this one table with an inside/outside-
-  habitual marker, alongside their subtotal and the all-in line. The same
-  dollars never appear in two tables.
+  habitual marker. The same dollars never appear in two tables.
+- **No subtotals under the table.** The per-row badge already says which side
+  of the habitual figure a row sits on; repeating it as an in-habitual /
+  excluded split invited adding the two together, and an all-in footer could
+  only ever restate `net.allInSpent` from the headline.
 
 **Top stores counts habitual spend only.** All-in would rank the landlord and
 the university first every single month — the same reason rent is out of the
 headline. Grouped with `nameGroupKey`, matching `/stores`.
+
+**What moved is one ranked list split by sign, not two sections.** There was a
+separate "quiet wins" list; it was computed from the same baseline and named the
+same categories a second time in a second phrasing, which is most of why neither
+read clearly. The cap is **per direction**, so a month where everything rose
+still shows what fell — which is the thing the separate list existed to
+guarantee. Every row prints the two figures its change is the difference
+between: "$59 under" names neither of them, and leaves the reader unable to tell
+a monthly total from a per-visit amount. The "typical" figure is literally the
+projection's per-month estimate for that category, so the sections reconcile on
+sight. A category skipped entirely is kept rather than dropped for want of a
+divisor — with no visits there is no average ticket, so the whole change is
+frequency, which is both true and what makes the two effects still sum to the
+delta.
+
+**The email draws a column chart; the web draws the numeric grid.** Seven
+columns of currency at a readable size do not fit 600px, and shrinking the type
+to fit produced something that was never going to be read. A bar answers "is
+this month high, and which way is it going" without parsing seven numbers, and
+the two figures that matter — this month and a typical month — are still
+written. Bars are **coloured table cells with pixel heights**: email clients
+ignore percentage heights, and an image-based chart is invisible to anyone with
+images off. Prior months use `baselineBar`, the neutral grey `layout.ts` already
+defines for "the current period is the subject, the rest is the backdrop". The
+full table stays on `/reports/monthly`, where it can scroll.
+
+**The digest email is a step larger and much more widely spaced than the weekly
+report** (15/14/13 against 14/13/12, 12px row padding against 6px, a rule
+between every row). It carries roughly three times the content, its rows are two
+lines deep, and it is read on a phone. **Explanatory text is a tinted callout
+rather than merely smaller type** — at a size difference alone the long notes
+read as data the reader was failing to parse. The callout sets colour *and*
+background, per the Gmail dark-mode rule in `layout.ts`.
 
 **The web view takes a month; the email cannot.** Month selection is the one
 thing an email structurally can't offer, and the projection is worth consulting

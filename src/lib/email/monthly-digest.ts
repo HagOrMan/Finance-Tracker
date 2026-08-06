@@ -5,22 +5,39 @@
  * screen. Nothing here computes a figure. If a number needs deriving it belongs
  * in `src/lib/monthly-digest.ts` where both surfaces can reach it, which is why
  * the label helpers (`bigSpenderReasonLabel`, `changeDriverLabel`,
- * `formatMonthAbbr`) are imported from there rather than written twice.
+ * `changeComparisonLabel`, `formatMonthAbbr`) are imported from there rather
+ * than written twice.
  *
  * Same Gmail constraints as every other template — inline styles, table layout,
  * no media queries, colour and background always set together. See `layout.ts`.
+ *
+ * **Three deliberate departures from `spending-report.ts`'s density**, all of
+ * them because a monthly digest is read on a phone and is roughly three times
+ * the length of a weekly report:
+ *
+ * 1. **A step larger throughout** (15/14/13 against 14/13/12). At the weekly
+ *    report's scale this much content reads as a wall.
+ * 2. **Every row is separated by a rule, not by whitespace alone.** Rows here
+ *    carry two lines of text, so 6px of padding left no way to see which hint
+ *    belonged to which label.
+ * 3. **Explanatory text is a tinted callout, not just smaller type.** Size
+ *    alone made the long notes read as data the reader was failing to parse.
+ *    The callout sets colour *and* background together, which is the rule
+ *    `layout.ts` enforces against Gmail's dark-mode inversion.
  */
 
 import { formatCurrency } from "@/lib/format";
 import {
   baselineLabel,
   bigSpenderReasonLabel,
+  changeComparisonLabel,
   changeDriverLabel,
   digestTitle,
   formatCompact as compact,
   formatMonthAbbr,
   formatMonthLong,
   type BigSpenderRow,
+  type CategoryChangeRow,
   type MonthlyDigest,
 } from "@/lib/monthly-digest";
 import { formatLongDate } from "@/lib/reports";
@@ -36,20 +53,28 @@ import {
 import { reportRecipient, sendEmail, type SendResult } from "./send";
 
 const base = `font-family:${EMAIL_FONT};background-color:${C.cardBg};`;
-const bodyText = `${base}font-size:14px;line-height:1.45;color:${C.text};`;
-const mutedText = `${base}font-size:13px;line-height:1.45;color:${C.muted};`;
-const faintText = `${base}font-size:12px;line-height:1.45;color:${C.faint};`;
-/** The grid is the one place that needs to fit 7 numeric columns in 600px. */
-const gridText = `${base}font-size:11px;line-height:1.35;color:${C.text};`;
+const bodyText = `${base}font-size:15px;line-height:1.5;color:${C.text};`;
+const mutedText = `${base}font-size:14px;line-height:1.5;color:${C.muted};`;
+/** Row-level descriptions. Italic so it can't be mistaken for a second value. */
+const hintText = `${base}font-size:13px;line-height:1.5;color:${C.faint};font-style:italic;`;
+
+/** Vertical breathing room on a data row. Doubled from the weekly report's 6px. */
+const ROW_PADDING = "12px";
 
 /**
  * Row caps. **Renderer-only**, unlike `REPORT_MAX_CATEGORY_ROWS`, which the
- * model itself applies — nothing here changes a number, it only stops Gmail
- * clipping the message at ~102 KB. Every cap that bites says so in the output.
+ * model itself applies — nothing here changes a number, it only keeps the
+ * message short enough to read and well under Gmail's ~102 KB clip. Every cap
+ * that bites says so in the output.
  */
 const MAX_BIG_SPENDER_ROWS = 12;
-const MAX_CHANGE_ROWS = 6;
-const MAX_QUIET_WINS = 4;
+/** Per direction, so a month where everything rose still shows what fell. */
+const MAX_MOVERS_PER_DIRECTION = 4;
+/** Charts are compact but not free; the tail becomes one summary line. */
+const MAX_CHART_CATEGORIES = 6;
+
+/** Pixel height of a column chart. Fixed, because email ignores percentage heights. */
+const CHART_HEIGHT = 36;
 
 /**
  * Colour for a net figure.
@@ -64,15 +89,56 @@ function netColor(value: number): string {
   return C.muted;
 }
 
-/** A small square in the category's colour, matching the app and the weekly email. */
-function swatch(color: string | undefined): string {
-  if (!color) return "";
-  return `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background-color:${color};">&nbsp;</span> `;
-}
-
 /** "$600 – $815", the p25–p75 band. */
 function rangeLabel(low: number, high: number): string {
   return `${compact(low)} – ${compact(high)}`;
+}
+
+/**
+ * The explanatory callout.
+ *
+ * A tinted block with an accent rule down its left edge, so a paragraph of
+ * "here is how this was calculated" is visibly a different *kind* of thing from
+ * the numbers above it. Background and colour are both set — Gmail's dark-mode
+ * inversion flips text and leaves an explicit background, and the failure mode
+ * is always white-on-white.
+ */
+function noteHtml(inner: string): string {
+  return `<div style="font-family:${EMAIL_FONT};font-size:13px;line-height:1.55;color:${C.muted};background-color:${C.pageBg};border-left:3px solid ${C.accent};border-radius:0 6px 6px 0;padding:12px 14px;margin-top:16px;">${inner}</div>`;
+}
+
+/**
+ * A two-column data row: label (with optional hint) on the left, value right.
+ *
+ * `first` suppresses the rule, so the separators land *between* rows rather
+ * than leaving a doubled line where the last one meets the section border.
+ */
+function dataRow({
+  label,
+  hint,
+  value,
+  valueColor,
+  first = false,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  valueColor?: string;
+  first?: boolean;
+}): string {
+  const rule = first ? "" : `border-top:1px solid ${C.border};`;
+  return `<tr>
+      <td style="${mutedText}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;${rule}">${escapeHtml(label)}${
+        hint ? `<div style="${hintText}margin-top:2px;">${escapeHtml(hint)}</div>` : ""
+      }</td>
+      <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;${rule}${
+        valueColor ? `color:${valueColor};` : ""
+      }">${escapeHtml(value)}</td>
+    </tr>`;
+}
+
+function tableHtml(rows: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">${rows}</table>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +191,7 @@ export function buildDigestHtml(
     headerSection(digest),
     headlineSection(digest),
     bigSpenderSection(digest),
-    gridSection(digest, options.categoryColors),
+    trendSection(digest, options.categoryColors),
     projectionSection(digest),
     incomeSection(digest),
     topStoresSection(digest),
@@ -145,85 +211,122 @@ export function buildDigestHtml(
 function headerSection(digest: MonthlyDigest): string {
   return sectionHtml(
     null,
-    `<div style="${bodyText}font-size:16px;font-weight:700;">💸 Finance Tracker</div>
-     <div style="${mutedText}margin-top:2px;">${escapeHtml(digestTitle(digest))} · ${digest.days} days</div>`,
+    `<div style="${bodyText}font-size:17px;font-weight:700;">💸 Finance Tracker</div>
+     <div style="${mutedText}margin-top:4px;">${escapeHtml(digestTitle(digest))} · ${digest.days} days</div>`,
   );
 }
 
 function headlineSection(digest: MonthlyDigest): string {
   const { net, received, allInSpent } = digest.net;
 
-  const stat = (name: string, value: string, hint: string) =>
-    `<tr>
-       <td style="${mutedText}padding:6px 0;">${escapeHtml(name)}<div style="${faintText}">${escapeHtml(hint)}</div></td>
-       <td align="right" style="${bodyText}padding:6px 0;font-weight:600;white-space:nowrap;">${escapeHtml(value)}</td>
-     </tr>`;
-
   return sectionHtml(
     null,
-    `<div style="${faintText}font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Net for ${escapeHtml(formatMonthLong(digest.month))}</div>
-     <div style="${base}font-size:32px;line-height:1.15;font-weight:700;color:${netColor(net)};margin-top:6px;">${escapeHtml(formatCurrency(net))}</div>
-     <div style="${faintText}margin-top:4px;">${escapeHtml(`${formatCurrency(received)} in · ${formatCurrency(allInSpent)} out`)}</div>
-     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-top:14px;border-top:1px solid ${C.border};">
-       ${stat("Habitual spend", formatCurrency(digest.habitual.spent), `${digest.habitual.receiptCount} receipt${digest.habitual.receiptCount === 1 ? "" : "s"} · what you control`)}
-       ${stat("Rent, school, travel", formatCurrency(digest.excluded.spent), "Itemised below, held out of every average")}
-       ${stat("All-in spend", formatCurrency(allInSpent), "Everything, before income")}
-       ${stat("Saved on discounts", formatCurrency(digest.savings.month), `${formatCurrency(digest.savings.yearToDate)} so far this year`)}
-     </table>`,
+    `<div style="${base}font-size:13px;line-height:1.4;color:${C.faint};font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Net for ${escapeHtml(formatMonthLong(digest.month))}</div>
+     <div style="${base}font-size:36px;line-height:1.15;font-weight:700;color:${netColor(net)};margin-top:8px;">${escapeHtml(formatCurrency(net))}</div>
+     <div style="${mutedText}margin-top:6px;">${escapeHtml(`${formatCurrency(received)} in · ${formatCurrency(allInSpent)} out`)}</div>
+     <div style="margin-top:20px;background-color:${C.cardBg};">
+       ${tableHtml(
+         [
+           dataRow({
+             label: "Habitual spend",
+             hint: `${digest.habitual.receiptCount} receipt${digest.habitual.receiptCount === 1 ? "" : "s"} — the part you control`,
+             value: formatCurrency(digest.habitual.spent),
+             first: true,
+           }),
+           dataRow({
+             label: "Rent, school, travel",
+             hint: "Listed below; held out of every average",
+             value: formatCurrency(digest.excluded.spent),
+           }),
+           dataRow({
+             label: "All-in spend",
+             hint: "Everything, before income",
+             value: formatCurrency(allInSpent),
+           }),
+           dataRow({
+             label: "Saved on discounts",
+             hint: `${formatCurrency(digest.savings.yearToDate)} so far this year`,
+             value: formatCurrency(digest.savings.month),
+           }),
+         ].join(""),
+       )}
+     </div>`,
   );
 }
 
 function bigSpenderSection(digest: MonthlyDigest): string {
+  const { oneOffs } = digest;
+
+  const note =
+    oneOffs.months === 0
+      ? ""
+      : noteHtml(
+          `Purchases like these in habitual categories — not rent, school, travel or subscriptions — are left out of <strong style="background-color:${C.pageBg};color:${C.text};">What to expect</strong>, because a car repair can't be predicted, only budgeted for.<br><br>Over the ${
+            oneOffs.months === 1 ? "month" : `${oneOffs.months} months`
+          } before this one there were <strong style="background-color:${C.pageBg};color:${C.text};">${oneOffs.count}</strong> of them totalling <strong style="background-color:${C.pageBg};color:${C.text};">${escapeHtml(formatCurrency(oneOffs.total))}</strong> — about <strong style="background-color:${C.pageBg};color:${C.text};">${escapeHtml(formatCurrency(oneOffs.perMonth))} a month</strong> worth setting aside.`,
+        );
+
   if (digest.bigSpenders.length === 0) {
     return sectionHtml(
       "Big spenders",
-      `<div style="${mutedText}">Nothing unusually large this month.</div>`,
+      `<div style="${mutedText}">Nothing unusually large this month.</div>${note}`,
     );
   }
 
   const shown = digest.bigSpenders.slice(0, MAX_BIG_SPENDER_ROWS);
-  const hidden = digest.bigSpenders.slice(MAX_BIG_SPENDER_ROWS);
+  const hidden = digest.bigSpenders.length - shown.length;
 
-  const row = (r: BigSpenderRow) => {
-    // "outside" is load-bearing: without it the same dollars read as if they
-    // were inside the habitual figure two sections up.
-    const tag = r.inHabitual ? "" : " · outside habitual";
-    const recurring = r.recurring ? " · recurring" : "";
+  const row = (r: BigSpenderRow, i: number) => {
+    // "outside habitual" is load-bearing: without it the same dollars read as
+    // if they were inside the habitual figure two sections up.
+    const tags = [
+      bigSpenderReasonLabel(r),
+      ...(r.inHabitual ? [] : ["outside habitual"]),
+      ...(r.recurring ? ["recurring"] : []),
+    ].join(" · ");
+    const rule = i === 0 ? "" : `border-top:1px solid ${C.border};`;
     return `<tr>
-        <td style="${bodyText}padding:6px 0;">${escapeHtml(r.store)}
-          <div style="${faintText}">${escapeHtml(`${r.category} · ${bigSpenderReasonLabel(r)}${tag}${recurring}`)}</div>
+        <td style="${bodyText}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;${rule}">${escapeHtml(r.store)}
+          <div style="${hintText}margin-top:2px;">${escapeHtml(`${r.category} · ${tags}`)}</div>
         </td>
-        <td align="right" style="${bodyText}padding:6px 0;font-weight:600;white-space:nowrap;vertical-align:top;">${escapeHtml(formatCurrency(r.amount))}</td>
+        <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;${rule}">${escapeHtml(formatCurrency(r.amount))}</td>
       </tr>`;
   };
 
   const hiddenRow =
-    hidden.length > 0
-      ? `<tr><td colspan="2" style="${faintText}padding:6px 0;">+ ${hidden.length} more over the threshold</td></tr>`
+    hidden > 0
+      ? `<tr><td colspan="2" style="${hintText}padding:${ROW_PADDING} 0;border-top:1px solid ${C.border};">+ ${hidden} more over the threshold</td></tr>`
       : "";
 
   return sectionHtml(
     "Big spenders",
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-       ${shown.map(row).join("")}
-       ${hiddenRow}
-       <tr>
-         <td style="${mutedText}padding:8px 0 0;border-top:1px solid ${C.border};">In habitual</td>
-         <td align="right" style="${mutedText}padding:8px 0 0;border-top:1px solid ${C.border};white-space:nowrap;">${escapeHtml(compact(digest.bigSpenderTotals.habitual))}</td>
-       </tr>
-       <tr>
-         <td style="${mutedText}padding:2px 0 0;">Rent, school, travel</td>
-         <td align="right" style="${mutedText}padding:2px 0 0;white-space:nowrap;">${escapeHtml(compact(digest.bigSpenderTotals.excluded))}</td>
-       </tr>
-     </table>`,
+    `${tableHtml(shown.map(row).join("") + hiddenRow)}${note}`,
   );
 }
 
-function gridSection(
+/**
+ * A month-by-month column chart per category.
+ *
+ * **Replaces the numeric grid that used to be here.** Seven columns of currency
+ * at a readable size do not fit a 600px email, and shrinking the type to make
+ * them fit produced something nobody would read. A bar answers "is this month
+ * high, and which way is it going" without parsing seven numbers; the two
+ * figures that matter — this month and a typical month — are still written out.
+ *
+ * The full numeric grid is still on `/reports/monthly`, where it can scroll.
+ *
+ * **Bars are coloured table cells with pixel heights**, not images and not
+ * percentages: email clients ignore percentage heights, and an image-based
+ * chart is invisible to anyone with images off, which for many recipients is
+ * always. Prior months use `baselineBar` — the neutral grey `layout.ts` defines
+ * for exactly this, since the current month is the subject and the rest is the
+ * backdrop it's read against.
+ */
+function trendSection(
   digest: MonthlyDigest,
   categoryColors: Record<string, string>,
 ): string {
-  const { months, rows, otherRow, totals } = digest.grid;
+  const { months, rows, otherRow } = digest.grid;
   if (rows.length === 0) {
     return sectionHtml(
       "Where it goes, month by month",
@@ -231,53 +334,117 @@ function gridSection(
     );
   }
 
-  const header = `<tr>
-      <td style="${faintText}padding:0 4px 6px 0;">Category</td>
-      ${months
-        .map(
-          (m, i) =>
-            `<td align="right" style="${faintText}padding:0 0 6px 4px;white-space:nowrap;${i === months.length - 1 ? `color:${C.text};font-weight:700;` : ""}">${escapeHtml(formatMonthAbbr(m))}</td>`,
-        )
-        .join("")}
-    </tr>`;
+  // The projection's per-month figure for each category — the same number the
+  // What-moved rows call "typical", so the three sections reconcile on sight.
+  const typical = new Map(
+    digest.projection.categories.map((c) => [c.category, c.perMonth]),
+  );
 
-  const bodyRow = (
-    label: string,
+  const shown = rows.slice(0, MAX_CHART_CATEGORIES);
+  const tail = rows.slice(MAX_CHART_CATEGORIES);
+
+  const block = (
+    category: string,
     values: (number | null)[],
-    color?: string,
-    bold = false,
-  ) =>
-    `<tr>
-       <td style="${gridText}padding:4px 4px 4px 0;${bold ? "font-weight:700;" : ""}">${swatch(color)}${escapeHtml(label)}</td>
-       ${values
-         .map(
-           (v, i) =>
-             `<td align="right" style="${gridText}padding:4px 0 4px 4px;white-space:nowrap;${i === values.length - 1 ? "font-weight:700;" : ""}${bold ? "font-weight:700;" : ""}">${escapeHtml(compact(v))}</td>`,
-         )
-         .join("")}
-     </tr>`;
+    color: string,
+    first: boolean,
+  ) => {
+    const current = values[values.length - 1] ?? null;
+    const typicalValue = typical.get(category);
+    return `<div style="background-color:${C.cardBg};padding:${first ? "0" : "16px"} 0 0;margin-top:${first ? "0" : "16px"};${first ? "" : `border-top:1px solid ${C.border};`}">
+        ${tableHtml(
+          `<tr>
+             <td style="${bodyText}padding:0 12px 6px 0;font-weight:600;">${escapeHtml(category)}</td>
+             <td align="right" style="${bodyText}padding:0 0 6px;font-weight:700;white-space:nowrap;">${escapeHtml(compact(current))}</td>
+           </tr>
+           ${
+             typicalValue === undefined
+               ? ""
+               : `<tr><td colspan="2" style="${hintText}padding:0 0 8px;">typical month ${escapeHtml(compact(typicalValue))}</td></tr>`
+           }`,
+        )}
+        ${columnChartHtml(values, color)}
+      </div>`;
+  };
 
-  const bodyRows = rows
-    .map((r) => bodyRow(r.category, r.values, categoryColors[r.category]))
+  const blocks = shown
+    .map((row, i) =>
+      block(
+        row.category,
+        row.values,
+        categoryColors[row.category] ?? C.accentDeep,
+        i === 0,
+      ),
+    )
     .join("");
-  const other = otherRow ? bodyRow(otherRow.category, otherRow.values) : "";
-  const totalRow = `<tr>
-      <td style="${gridText}padding:8px 4px 0 0;font-weight:700;border-top:1px solid ${C.border};">Habitual</td>
-      ${totals
-        .map(
-          (v) =>
-            `<td align="right" style="${gridText}padding:8px 0 0 4px;font-weight:700;white-space:nowrap;border-top:1px solid ${C.border};">${escapeHtml(compact(v))}</td>`,
-        )
-        .join("")}
-    </tr>`;
+
+  // Everything past the chart cap, plus the model's own roll-up, as one line —
+  // stated rather than silently dropped. No count: `otherRow` already stands
+  // for several categories, so adding it to `tail.length` would undercount, and
+  // the number it stands for isn't carried on the row.
+  const remainder = [...tail, ...(otherRow ? [otherRow] : [])];
+  const remainderLine =
+    remainder.length > 0
+      ? `<div style="${mutedText}margin-top:16px;padding-top:16px;border-top:1px solid ${C.border};">Everything else — ${escapeHtml(
+          compact(
+            remainder.reduce(
+              (sum, row) => sum + (row.values[row.values.length - 1] ?? 0),
+              0,
+            ),
+          ),
+        )} this month</div>`
+      : "";
 
   return sectionHtml(
     "Where it goes, month by month",
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-       ${header}${bodyRows}${other}${totalRow}
-     </table>
-     <div style="${faintText}margin-top:8px;">A dash means the month predates the ledger. Rent, school and travel are not shown here — see Big spenders.</div>`,
+    `${monthAxisHtml(months)}${blocks}${remainderLine}${noteHtml(
+      `Each bar is one month, scaled to that category's own biggest month — so the shape is comparable within a row, not between rows. The last bar is ${escapeHtml(formatMonthAbbr(months[months.length - 1] ?? ""))}. A missing bar means the ledger doesn't reach that month, which is not the same as spending nothing.<br><br>Rent, school and travel aren't here; they're under Big spenders. The full table of figures is on the site.`,
+    )}`,
   );
+}
+
+/** The shared month axis, drawn once above the first chart — all charts align. */
+function monthAxisHtml(months: string[]): string {
+  const cells = months
+    .map((month, i) => {
+      const isCurrent = i === months.length - 1;
+      return `<td align="center" style="font-family:${EMAIL_FONT};font-size:12px;line-height:1.3;padding:0 2px 10px;background-color:${C.cardBg};color:${isCurrent ? C.text : C.faint};${isCurrent ? "font-weight:700;" : ""}">${escapeHtml(formatMonthAbbr(month))}</td>`;
+    })
+    .join("");
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;table-layout:fixed;"><tr>${cells}</tr></table>`;
+}
+
+function columnChartHtml(
+  values: (number | null)[],
+  currentColor: string,
+): string {
+  const max = Math.max(0, ...values.map((v) => v ?? 0));
+
+  const cells = values
+    .map((value, i) => {
+      const isCurrent = i === values.length - 1;
+      const cell = `valign="bottom" height="${CHART_HEIGHT}" style="padding:0 2px;background-color:${C.cardBg};font-size:0;line-height:0;"`;
+
+      if (value === null) {
+        // A hairline on the baseline, not an empty column — an absent bar and a
+        // zero bar would otherwise look identical.
+        return `<td ${cell}><div style="height:2px;background-color:${C.track};font-size:0;line-height:0;">&nbsp;</div></td>`;
+      }
+
+      // Floored at 3px so a real-but-tiny month is visible rather than reading
+      // as no data, and clamped at 0 for the negative total a fully refunded
+      // receipt can produce. Same reasoning as `barPercent` in `reports.ts`.
+      const height =
+        max > 0 && value > 0
+          ? Math.max(3, Math.round((value / max) * CHART_HEIGHT))
+          : 3;
+      return `<td ${cell}><div style="height:${height}px;background-color:${
+        isCurrent ? currentColor : C.baselineBar
+      };border-radius:2px 2px 0 0;font-size:0;line-height:0;">&nbsp;</div></td>`;
+    })
+    .join("");
+
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;table-layout:fixed;"><tr>${cells}</tr></table>`;
 }
 
 function projectionSection(digest: MonthlyDigest): string {
@@ -290,19 +457,16 @@ function projectionSection(digest: MonthlyDigest): string {
   }
 
   const trendTag = (trend: "rising" | "falling" | null) =>
-    trend === null
-      ? ""
-      : `<span style="color:${trend === "rising" ? C.up : C.down};"> · ${trend}</span>`;
+    trend === null ? "" : ` · ${trend}`;
 
   const categoryRows = p.categories
-    .map(
-      (row) =>
-        `<tr>
-           <td style="${bodyText}padding:5px 0;">${escapeHtml(row.category)}
-             <div style="${faintText}">typical ${escapeHtml(rangeLabel(row.low, row.high))}${trendTag(row.trend)}</div>
-           </td>
-           <td align="right" style="${bodyText}padding:5px 0;font-weight:600;white-space:nowrap;vertical-align:top;">${escapeHtml(compact(row.perMonth))}</td>
-         </tr>`,
+    .map((row, i) =>
+      dataRow({
+        label: row.category,
+        hint: `typical ${rangeLabel(row.low, row.high)}${trendTag(row.trend)}`,
+        value: compact(row.perMonth),
+        first: i === 0,
+      }),
     )
     .join("");
 
@@ -314,28 +478,28 @@ function projectionSection(digest: MonthlyDigest): string {
 
   return sectionHtml(
     "What to expect",
-    `<div style="${faintText}font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">${escapeHtml(formatMonthLong(p.nextMonth))}</div>
-     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-top:6px;">
-       ${categoryRows}
-       <tr>
-         <td style="${mutedText}padding:6px 0 0;border-top:1px solid ${C.border};">Subscriptions<div style="${faintText}">From the schedule, not estimated</div></td>
-         <td align="right" style="${mutedText}padding:6px 0 0;border-top:1px solid ${C.border};white-space:nowrap;vertical-align:top;">${escapeHtml(compact(p.subscriptionsNextMonth))}</td>
-       </tr>
-       <tr>
-         <td style="${bodyText}padding:6px 0 0;font-weight:700;">Next month</td>
-         <td align="right" style="${bodyText}padding:6px 0 0;font-weight:700;white-space:nowrap;">${escapeHtml(compact(p.nextMonthTotal.total))}</td>
-       </tr>
-       <tr>
-         <td style="${faintText}padding:0 0 8px;">typical ${escapeHtml(rangeLabel(p.nextMonthTotal.low, p.nextMonthTotal.high))}</td>
-         <td></td>
-       </tr>
-       <tr>
-         <td style="${bodyText}padding:8px 0 0;font-weight:700;border-top:1px solid ${C.border};">${escapeHtml(`Through ${formatMonthLong(p.horizonThrough)}`)}<div style="${faintText}">${p.horizonMonths} months · typical ${escapeHtml(rangeLabel(p.horizonTotal.low, p.horizonTotal.high))}</div></td>
-         <td align="right" style="${bodyText}padding:8px 0 0;font-weight:700;white-space:nowrap;border-top:1px solid ${C.border};vertical-align:top;">${escapeHtml(compact(p.horizonTotal.total))}</td>
-       </tr>
-     </table>
-     <div style="${mutedText}margin-top:10px;padding-top:10px;border-top:1px solid ${C.border};">Set aside about ${escapeHtml(compact(p.oneOffBuffer))} a month for one-offs.<div style="${faintText}">They are stripped from the figures above because they can't be forecast — which is not the same as not happening.</div></div>
-     <div style="${faintText}margin-top:8px;">Habitual + subscriptions only — excludes rent, school and travel. ${escapeHtml(rule)}${baseline ? `, over ${escapeHtml(baseline)}` : ""}. Ranges are the middle half of those months; the multi-month band widens as √n, since good and bad months partly cancel.</div>`,
+    `<div style="${base}font-size:13px;line-height:1.4;color:${C.faint};font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">${escapeHtml(formatMonthLong(p.nextMonth))}</div>
+     ${tableHtml(
+       categoryRows +
+         dataRow({
+           label: "Subscriptions",
+           hint: "From the schedule — known, not estimated",
+           value: compact(p.subscriptionsNextMonth),
+         }) +
+         dataRow({
+           label: "Next month",
+           hint: `typical ${rangeLabel(p.nextMonthTotal.low, p.nextMonthTotal.high)}`,
+           value: compact(p.nextMonthTotal.total),
+         }) +
+         dataRow({
+           label: `Through ${formatMonthLong(p.horizonThrough)}`,
+           hint: `${p.horizonMonths} months · typical ${rangeLabel(p.horizonTotal.low, p.horizonTotal.high)}`,
+           value: compact(p.horizonTotal.total),
+         }),
+     )}
+     ${noteHtml(
+       `Habitual spend plus subscriptions only — <strong style="background-color:${C.pageBg};color:${C.text};">excludes rent, school and travel</strong>, which are paid ad hoc and have no schedule to project from. Income is never projected either.<br><br>${escapeHtml(rule)}${baseline ? `, over ${escapeHtml(baseline)}` : ""}. Ranges are the middle half of those months; the multi-month band widens as √n, since good and bad months partly cancel.`,
+     )}`,
   );
 }
 
@@ -349,25 +513,24 @@ function incomeSection(digest: MonthlyDigest): string {
   }
 
   const rows = income.entities
-    .map(
-      (e) =>
-        `<tr>
-           <td style="${bodyText}padding:5px 0;">${escapeHtml(e.name)}<div style="${faintText}">${e.count} disbursement${e.count === 1 ? "" : "s"}</div></td>
-           <td align="right" style="${bodyText}padding:5px 0;font-weight:600;white-space:nowrap;vertical-align:top;">${escapeHtml(formatCurrency(e.total))}</td>
-         </tr>`,
+    .map((entity, i) =>
+      dataRow({
+        label: entity.name,
+        hint: `${entity.count} disbursement${entity.count === 1 ? "" : "s"}`,
+        value: formatCurrency(entity.total),
+        first: i === 0,
+      }),
     )
     .join("");
 
   return sectionHtml(
     "What came in",
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-       ${rows}
-       <tr>
-         <td style="${bodyText}padding:8px 0 0;font-weight:700;border-top:1px solid ${C.border};">Total</td>
-         <td align="right" style="${bodyText}padding:8px 0 0;font-weight:700;white-space:nowrap;border-top:1px solid ${C.border};">${escapeHtml(formatCurrency(income.total))}</td>
-       </tr>
-     </table>
-     <div style="${faintText}margin-top:8px;">Refunds are excluded — they already came off the spending figures. Never projected forward: term-time hours differ too much from summer for an average to mean anything.</div>`,
+    `${tableHtml(
+      rows + dataRow({ label: "Total", value: formatCurrency(income.total) }),
+    )}
+     ${noteHtml(
+       "Refunds are excluded — they already came off the spending figures. Never projected forward: term-time hours differ too much from summer for an average to mean anything.",
+     )}`,
   );
 }
 
@@ -377,82 +540,96 @@ function topStoresSection(digest: MonthlyDigest): string {
 
   const rows = digest.topStores
     .map(
-      (s) =>
-        `<tr><td style="padding:6px 0;background-color:${C.cardBg};">
-           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-             <tr>
-               <td style="${bodyText}padding:0 0 3px;">${escapeHtml(s.name)}</td>
-               <td align="right" style="${bodyText}padding:0 0 3px;font-weight:600;white-space:nowrap;">${escapeHtml(formatCurrency(s.total))}</td>
-             </tr>
-             <tr><td colspan="2" style="padding:0;">${barHtml(max > 0 ? (s.total / max) * 100 : 0, C.accent)}</td></tr>
-             <tr><td colspan="2" style="${faintText}padding:2px 0 0;">${s.count} visit${s.count === 1 ? "" : "s"}</td></tr>
-           </table>
+      (store, i) =>
+        `<tr><td style="padding:${i === 0 ? "0" : "14px"} 0 0;background-color:${C.cardBg};">
+           ${tableHtml(
+             `<tr>
+                <td style="${bodyText}padding:0 12px 6px 0;">${escapeHtml(store.name)}</td>
+                <td align="right" style="${bodyText}padding:0 0 6px;font-weight:700;white-space:nowrap;">${escapeHtml(formatCurrency(store.total))}</td>
+              </tr>
+              <tr><td colspan="2" style="padding:0;">${barHtml(max > 0 ? (store.total / max) * 100 : 0, C.accent)}</td></tr>
+              <tr><td colspan="2" style="${hintText}padding:4px 0 0;">${store.count} visit${store.count === 1 ? "" : "s"}</td></tr>`,
+           )}
          </td></tr>`,
     )
     .join("");
 
   return sectionHtml(
     "Where the money went",
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">${rows}</table>
-     <div style="${faintText}margin-top:6px;">Habitual spend only — all-in would rank your landlord first every month.</div>`,
+    `${tableHtml(rows)}
+     ${noteHtml("Habitual spend only — all-in would rank your landlord first every month.")}`,
   );
 }
 
+/**
+ * What moved, both directions, in one section.
+ *
+ * There used to be a separate "quiet wins" list built from this same baseline;
+ * it named the same categories a second time in a second phrasing, which is
+ * most of why neither was readable. Splitting one ranked list by sign says the
+ * same thing once.
+ */
 function moversSection(digest: MonthlyDigest): string {
-  const changes = digest.changes.slice(0, MAX_CHANGE_ROWS);
-  const wins = digest.quietWins.slice(0, MAX_QUIET_WINS);
-  if (changes.length === 0 && wins.length === 0 && !digest.eatingOut) return "";
-
-  const changeRows = changes
-    .map((row) => {
-      const up = row.deltaSpent >= 0;
-      return `<tr>
-          <td style="${bodyText}padding:5px 0;">${escapeHtml(row.category)}
-            <div style="${faintText}">${escapeHtml(changeDriverLabel(row))} · ${escapeHtml(`${row.receiptCount} vs ${row.baselineCount.toFixed(1)} typical`)}</div>
-          </td>
-          <td align="right" style="${base}font-size:14px;line-height:1.45;padding:5px 0;font-weight:600;white-space:nowrap;vertical-align:top;color:${up ? C.up : C.down};">${escapeHtml(`${up ? "+" : "−"}${compact(Math.abs(row.deltaSpent))}`)}</td>
-        </tr>`;
-    })
-    .join("");
-
-  const changeBlock =
-    changes.length > 0
-      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">${changeRows}</table>
-         <div style="${faintText}margin-top:6px;">Against a typical month, one-offs removed. Split into how often you went and what each visit cost.</div>`
-      : "";
-
-  const winsBlock =
-    wins.length > 0
-      ? `<div style="${mutedText}margin-top:${changes.length > 0 ? "12px" : "0"};padding-top:${changes.length > 0 ? "12px" : "0"};${changes.length > 0 ? `border-top:1px solid ${C.border};` : ""}"><span style="color:${C.down};font-weight:700;">Quiet wins</span> — ${escapeHtml(
-          wins
-            .map((w) => `${w.category} ${compact(Math.abs(w.delta))} under`)
-            .join(", "),
-        )}</div>`
-      : "";
-
+  const up = digest.changes
+    .filter((row) => row.deltaSpent > 0)
+    .slice(0, MAX_MOVERS_PER_DIRECTION);
+  const down = digest.changes
+    .filter((row) => row.deltaSpent < 0)
+    .slice(0, MAX_MOVERS_PER_DIRECTION);
   const eating = digest.eatingOut;
+
+  if (up.length === 0 && down.length === 0 && !eating) return "";
+
+  const group = (title: string, rows: CategoryChangeRow[], rising: boolean) => {
+    if (rows.length === 0) return "";
+    const color = rising ? C.up : C.down;
+    return `<div style="background-color:${C.cardBg};margin-top:16px;">
+        <div style="${base}font-size:13px;line-height:1.4;color:${color};font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;">${escapeHtml(title)}</div>
+        ${tableHtml(
+          rows
+            .map((row, i) => {
+              const rule = i === 0 ? "" : `border-top:1px solid ${C.border};`;
+              return `<tr>
+                  <td style="${bodyText}padding:${ROW_PADDING} 12px ${ROW_PADDING} 0;${rule}">${escapeHtml(row.category)}
+                    <div style="${hintText}margin-top:2px;">${escapeHtml(changeComparisonLabel(row))}</div>
+                    <div style="${hintText}">${escapeHtml(changeDriverLabel(row))}</div>
+                  </td>
+                  <td align="right" style="${bodyText}padding:${ROW_PADDING} 0;font-weight:700;white-space:nowrap;vertical-align:top;color:${color};${rule}">${escapeHtml(`${rising ? "+" : "−"}${compact(Math.abs(row.deltaSpent))}`)}</td>
+                </tr>`;
+            })
+            .join(""),
+        )}
+      </div>`;
+  };
+
   const eatingBlock =
     eating && eating.stressedShare !== null
-      ? `<div style="${mutedText}margin-top:12px;padding-top:12px;border-top:1px solid ${C.border};">Eating out was ${Math.round(eating.stressedShare * 100)}% stressed, ${Math.round((1 - eating.stressedShare) * 100)}% social${
+      ? `<div style="${mutedText}margin-top:16px;padding-top:16px;border-top:1px solid ${C.border};">Eating out was ${Math.round(eating.stressedShare * 100)}% stressed, ${Math.round((1 - eating.stressedShare) * 100)}% social${
           eating.baselineStressedShare !== null
             ? ` — typically ${Math.round(eating.baselineStressedShare * 100)}% stressed`
             : ""
-        }.<div style="${faintText}">${escapeHtml(`${formatCurrency(eating.stressed)} stressed · ${formatCurrency(eating.social)} social`)}</div></div>`
+        }.<div style="${hintText}margin-top:2px;">${escapeHtml(`${formatCurrency(eating.stressed)} stressed · ${formatCurrency(eating.social)} social`)}</div></div>`
       : "";
 
-  return sectionHtml("What moved", `${changeBlock}${winsBlock}${eatingBlock}`);
+  return sectionHtml(
+    "What moved",
+    `${group("Spent more", up, true)}${group("Spent less", down, false)}${eatingBlock}
+     ${noteHtml(
+       "Each row is your total for the month against what a typical month costs — the same per-month figure as What to expect. One-offs are removed from both sides, so a single big purchase doesn't read as a change in habit.",
+     )}`,
+  );
 }
 
 function footerSection(digest: MonthlyDigest, appUrl?: string): string {
   // 44px of height on the link — it is the only tap target in the email.
   const href = appUrl ? `${appUrl}/reports/monthly?month=${digest.month}` : "";
   const button = href
-    ? `<a href="${escapeHtml(href)}" style="${base}display:inline-block;padding:12px 20px;font-size:14px;font-weight:600;color:#ffffff;background-color:${C.accentDeep};border-radius:8px;text-decoration:none;">Open this month</a>`
+    ? `<a href="${escapeHtml(href)}" style="${base}display:inline-block;padding:14px 22px;font-size:15px;font-weight:600;color:#ffffff;background-color:${C.accentDeep};border-radius:8px;text-decoration:none;">Open this month</a>`
     : "";
   return sectionHtml(
     null,
     `${button}
-     <div style="${faintText}margin-top:${href ? "12px" : "0"};">Generated ${escapeHtml(formatLongDate(digest.generatedFor))} for ${escapeHtml(formatMonthLong(digest.month))}. Figures are net of refunds. Anything entered after this was sent is not counted.</div>`,
+     <div style="${hintText}margin-top:${href ? "14px" : "0"};">Generated ${escapeHtml(formatLongDate(digest.generatedFor))} for ${escapeHtml(formatMonthLong(digest.month))}. Figures are net of refunds. Anything entered after this was sent is not counted.</div>`,
   );
 }
 
@@ -485,9 +662,14 @@ export function buildDigestText(digest: MonthlyDigest): string {
     }
     const hidden = digest.bigSpenders.length - MAX_BIG_SPENDER_ROWS;
     if (hidden > 0) lines.push(`  + ${hidden} more over the threshold`);
+  }
+
+  if (digest.oneOffs.months > 0) {
     lines.push(
-      `  In habitual: ${formatCurrency(digest.bigSpenderTotals.habitual)}`,
-      `  Rent, school, travel: ${formatCurrency(digest.bigSpenderTotals.excluded)}`,
+      "",
+      `  One-offs like these in habitual categories are left out of What to expect.`,
+      `  Over the ${digest.oneOffs.months} months before this one there were ${digest.oneOffs.count},`,
+      `  totalling ${formatCurrency(digest.oneOffs.total)} — about ${formatCurrency(digest.oneOffs.perMonth)} a month to set aside.`,
     );
   }
 
@@ -521,7 +703,6 @@ export function buildDigestText(digest: MonthlyDigest): string {
       `    Subscriptions: ${compact(p.subscriptionsNextMonth)} (from the schedule)`,
       `    Next month total: ${compact(p.nextMonthTotal.total)} (typical ${rangeLabel(p.nextMonthTotal.low, p.nextMonthTotal.high)})`,
       `  Through ${formatMonthLong(p.horizonThrough)} (${p.horizonMonths} months): ${compact(p.horizonTotal.total)} (typical ${rangeLabel(p.horizonTotal.low, p.horizonTotal.high)})`,
-      `  Buffer for one-offs: about ${compact(p.oneOffBuffer)} a month.`,
       "  Habitual + subscriptions only — excludes rent, school and travel.",
     );
   }
@@ -547,22 +728,26 @@ export function buildDigestText(digest: MonthlyDigest): string {
     }
   }
 
-  const changes = digest.changes.slice(0, MAX_CHANGE_ROWS);
-  if (changes.length > 0) {
-    lines.push("", "WHAT MOVED");
-    for (const row of changes) {
-      const sign = row.deltaSpent >= 0 ? "+" : "-";
-      lines.push(
-        `  ${row.category}: ${sign}${compact(Math.abs(row.deltaSpent))} — ${changeDriverLabel(row)}`,
-      );
-    }
-  }
+  const up = digest.changes
+    .filter((row) => row.deltaSpent > 0)
+    .slice(0, MAX_MOVERS_PER_DIRECTION);
+  const down = digest.changes
+    .filter((row) => row.deltaSpent < 0)
+    .slice(0, MAX_MOVERS_PER_DIRECTION);
 
-  const wins = digest.quietWins.slice(0, MAX_QUIET_WINS);
-  if (wins.length > 0) {
-    lines.push(
-      `  Quiet wins: ${wins.map((w) => `${w.category} ${compact(Math.abs(w.delta))} under`).join(", ")}`,
-    );
+  if (up.length > 0 || down.length > 0) {
+    lines.push("", "WHAT MOVED");
+    const group = (title: string, rows: CategoryChangeRow[], sign: string) => {
+      if (rows.length === 0) return;
+      lines.push(`  ${title}:`);
+      for (const row of rows) {
+        lines.push(
+          `    ${row.category}: ${sign}${compact(Math.abs(row.deltaSpent))} — ${changeComparisonLabel(row)}, ${changeDriverLabel(row)}`,
+        );
+      }
+    };
+    group("Spent more", up, "+");
+    group("Spent less", down, "-");
   }
 
   if (digest.eatingOut && digest.eatingOut.stressedShare !== null) {

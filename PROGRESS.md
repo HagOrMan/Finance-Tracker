@@ -31,10 +31,13 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
    email, cron branch, API routes and page are all in. The reasoning behind
    every decision is in `ARCHITECTURE.md` ("Monthly digest") — read that before
    changing any of it. What still needs a human:
-   - **Look at one real digest** before the cron sends one unprompted. Open
-     `/reports/monthly`, then use "Send to email" and read it in Gmail on a
-     phone — the 7-column grid is the part most likely to need the row cap
-     lowered, and nothing but a real inbox will show that.
+   - **Re-read the email after the density pass.** First look found it far too
+     cramped on Gmail mobile and desktop; type went up a step, row padding
+     doubled, rules went between every row, explanatory text became a tinted
+     callout, and the 7-column numeric grid became a column chart per category
+     (the table stays on the web, where it can scroll). Whether that is enough
+     only a real inbox will say. `MAX_CHART_CATEGORIES` in
+     `src/lib/email/monthly-digest.ts` is the knob if it is still long.
    - **Sanity-check the big-spender thresholds against a real month.** The
      $150 floor and the 3× category multiple are guesses until a month's rows
      are looked at; both are constants in `src/lib/config.ts`.

@@ -126,9 +126,6 @@ export const FORECAST_HORIZON_MONTHS = 4;
  */
 export const FORECAST_TREND_THRESHOLD = 0.25;
 
-/** A category this far below its baseline is a "quiet win" worth naming. */
-export const DIGEST_QUIET_WIN_THRESHOLD = 0.1;
-
 /**
  * The three big-spender rules (ARCHITECTURE.md). A receipt qualifies on **any**
  * of them, and the digest states which one it hit — a bare threshold cannot
