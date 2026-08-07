@@ -43,7 +43,12 @@ import {
   updateReceiptSchema,
   updateSubscriptionSchema,
 } from "@/lib/data/schemas";
-import { addMonthsToKey, isMonthKey, monthKeyOf, todayInZone } from "@/lib/dates";
+import {
+  addMonthsToKey,
+  isMonthKey,
+  monthKeyOf,
+  todayInZone,
+} from "@/lib/dates";
 import { buildMonthlyDigest } from "@/lib/monthly-digest";
 import {
   buildSpendingReport,
@@ -215,7 +220,7 @@ const sendDisabled = () =>
   json(
     {
       error:
-        "Demo mode — nothing is emailed from here. The page above shows exactly what would be sent.",
+        "Sorry, this is a demo! Nothing is emailed from here, BUT the page above shows exactly what would be sent :)",
       sent: false,
       subject: null,
       reason: "demo-mode",
