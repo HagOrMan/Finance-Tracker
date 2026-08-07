@@ -1,8 +1,10 @@
-# Demo Mode Implementation Guide
+# Demo Mode — Finance Tracker
 
-A portable spec for adding a public, safe, no-login demo build to a private Next.js + Supabase app deployed on Vercel.
+How the public, no-login demo build of **this repo** was designed and built, and the audit that produced it. Sections 4, 5 and Appendix A are specific to this app's file layout and invariants.
 
-Hand this file to Claude Code inside a repo and ask it to implement the plan. It is written to be adapted, not followed blindly — read the **Audit first** section before writing any code.
+**Going to another repo? Use `demo-mode-playbook.md` instead** — the portable version, with none of this app's naming in it, and with the from-scratch data-layer work that this repo didn't need. This file stays because §12's checklist is still the thing to walk before the demo is linked anywhere, and Appendix A records why several of the playbook's default answers were overridden here.
+
+Status: built and verified locally. See `PROGRESS.md` for what's left, and `ARCHITECTURE.md` §8 for the invariants that must survive future work.
 
 ---
 
