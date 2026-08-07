@@ -94,31 +94,36 @@ The browser's actual seam is a single function — `request()` in [use-finance-d
 src/lib/demo/
   flag.ts          # IS_DEMO — the only read of NEXT_PUBLIC_DEMO_MODE
   store.ts         # in-memory dataset + localStorage write-through (§5)
-  seed.ts          # generateSeed(): DemoDataset
-  transport.ts     # (method, path, body) -> DemoDataSource call -> parsed body
+  seed.ts          # generateSeed(): DemoSeed
+  transport.ts     # (method, path, body) -> DemoDataSource call -> Response
 src/lib/data/
   demo-source.ts   # class DemoDataSource implements DataSource
 ```
 
 `demo-source.ts` sits with its siblings rather than under `src/lib/demo/` because it implements the same interface they do, and that interface is what keeps the demo honest — a method added to `DataSource` breaks the demo build immediately. Nothing else in `src/lib/data/` is `server-only` except `cache.ts`; `types.ts` and `merge.ts` are plain modules and are all `DemoDataSource` needs.
 
-Then one change, in `request()`:
+**`demoRequest` returns a `Response`, not a parsed body and not a thrown error.** This is the single most important decision in the port, and the obvious alternative is a trap: having the transport throw `ApiError` directly requires importing `ApiError` from `use-finance-data.ts`, which imports the transport — a circular import you discover at build time. Returning a `Response` makes the transport a drop-in for `fetch`, so the change at the call site is a ternary:
 
 ```ts
-async function request<T>(url: string, init?: { method: string; input?: unknown }): Promise<T> {
-  if (IS_DEMO) return demoRequest<T>(url, init); // src/lib/demo/transport.ts
-  const res = await fetch(url, /* … unchanged … */);
-  // …unchanged…
-}
+const res = IS_DEMO
+  ? await (await import("@/lib/demo/transport")).demoRequest(url, init)
+  : await fetch(url, /* … unchanged … */);
+// everything below here is unchanged
 ```
 
-Everything above that line keeps working untouched: every hook, the invalidation fan-out (`invalidateReceipts` / `invalidateDisbursements` / `invalidateSubscriptionCharges`), `placeholderData` on the report queries, and the `ApiError` the tables read `linked` off. The demo exercises the real client, not a parallel one.
+Everything below that line keeps working untouched: `res.ok`, `res.json()`, the `ApiError` construction, and the 409 `linked` payload the editors read back. Above it, every hook, the invalidation fan-out (`invalidateReceipts` / `invalidateDisbursements` / `invalidateSubscriptionCharges`) and `placeholderData` on the report queries are untouched too. The demo exercises the real client, not a parallel one.
+
+The **dynamic** import is deliberate: `IS_DEMO` is inlined at build time, so a production build's branch is statically false and the transport, store and seed generator live in a chunk that is never fetched. Same trick `getDataSource()` already uses for its two adapters.
+
+⚠️ **A build-time-false branch removes the call, not the import.** `if (IS_DEMO) resetDemoStore()` with a static `import { resetDemoStore }` at the top of the file still ships the store — and everything it imports, including the whole seed generator — to production visitors. This bites hardest in the boot gate and the banner (§6, §10), because those mount on every page in *both* modes. Every entry point into demo code must be `await import(...)` at the point of use, not just the one in `request()`.
 
 ### 4.3 The transport reproduces the route handlers, not just the data
 
-Status codes are load-bearing in this UI. `errorResponse()` in [api.ts](src/lib/api.ts) maps `NotFoundError` → 404 and `ForeignKeyViolationError` → 409 with `linked: error.blockedBy`; the client reads that back through `linkedDisbursements()` in `use-finance-data.ts` and renders the blocking rows inline. `demoRequest` must therefore throw `ApiError` with the same status and the same body shape.
+Status codes are load-bearing in this UI. `errorResponse()` in [api.ts](src/lib/api.ts) maps `NotFoundError` → 404 and `ForeignKeyViolationError` → 409 with `linked: error.blockedBy`; the client reads that back through `linkedDisbursements()` in `use-finance-data.ts` and renders the blocking rows inline. The transport must produce the same status and the same body shape.
 
-Mirror the mapping rules — do **not** import `errorResponse` itself, which returns a `NextResponse` and pulls in `next/server`. Also mirror per route: validate with the same zod schemas from `src/lib/data/schemas.ts` (so a bad form fails identically), treat `?fresh=1` as a no-op, and return the created row for a POST.
+Copy the mapping *rules*; do **not** import `errorResponse` itself, which builds a `NextResponse` and pulls `next/server` into a browser bundle. Same for `badRequest` and `parseIdParam` — ~15 lines re-stated locally. Also mirror per route: validate with the same zod schemas from `src/lib/data/schemas.ts` (so a bad form fails identically), treat `?fresh=1` as a no-op, return 201 with the created row for a POST, and check the delete guards *up front* so the 409 can name the blocking rows.
+
+Two things the transport deliberately does not mirror: **authorization** (there is no session and no server; `requireOwnerForApi()` stays untouched and is simply never reached) and **cache invalidation** (`src/lib/data/cache.ts` is `server-only` and there is no server cache — TanStack's half still runs).
 
 ### 4.4 Reports and the digest are not CRUD — and this is where the runner split pays off
 
@@ -289,7 +294,7 @@ Run all of these against the deployed demo before linking it anywhere.
 
 - [ ] Open the demo URL in a fresh private window. No login prompt appears.
 - [ ] DevTools → Network, filter `supabase`. **Zero requests.** Also check for your email provider, analytics, and any other third-party domain.
-- [ ] DevTools → Application → Local Storage. One key. Contents are entirely fictional.
+- [ ] DevTools → Application → Local Storage. Contents entirely fictional. **One key *for the data*** — a demo may legitimately have others for unrelated persisted UI state (this repo persists filters under `finance-tracker-filters`), and Reset must clear only the data key.
 - [ ] View source / search the JS bundle for `supabase.co`, `eyJ` (JWT prefix), and any project ref. No hits.
 - [ ] Create, edit, and delete a record. Refresh. Changes persisted.
 - [ ] Reset button returns a clean seed.
@@ -393,10 +398,12 @@ Three rows to add, each covering an invariant that only exists in Postgres in pr
 - [ ] Press "Run due charges" twice → the second run is a no-op, not a double charge.
 - [ ] Step the `/reports/monthly` month picker back through every seeded month → no blank months, projection populated.
 
+One expected result that reads like a failure: **`curl`ing an `/api/*` route on the deployed demo returns 500, not 401.** In demo mode the browser never reaches those handlers, so they still start with `requireOwnerForApi()` → `getSessionUser()` → `requireEnv("NEXT_PUBLIC_SUPABASE_URL")`, which throws because the demo environment has no Supabase credentials. Nothing is behind the 500 — there is no data and no secret in that environment to reach — and the alternative would be a demo branch inside the owner gate, which §7 rules out.
+
 ### §14 — implementation order
 
 Step 2 ("add the `DataSource` interface, wrap existing Supabase calls") **is already done** — skip it. Replace with: build `DemoDataSource` against the existing interface first, since the interface is the spec and TypeScript will enumerate what's missing.
 
 ### Incidental
 
-`ARCHITECTURE.md` §4 refers to a `todayISO()` helper that no longer exists in `src/lib/dates.ts` (only `todayInZone`). Noticed while deciding what "today" means in demo (§4.4); unrelated to this work, worth a line in `PROGRESS.md`.
+`ARCHITECTURE.md` §4 discusses `todayISO()` and `todayInZone()` together as if they were siblings; they live in different files (`src/lib/filters.ts` and `src/lib/dates.ts` respectively). Noticed while deciding what "today" means in demo (§4.4). Harmless, but it costs a grep.

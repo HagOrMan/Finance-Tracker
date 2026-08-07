@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { APP_TIMEZONE, DIGEST_SEND_DAY_OF_MONTH } from "@/lib/config";
 import { invalidateSubscriptionCharges } from "@/lib/data/cache";
+import { IS_DEMO } from "@/lib/demo/flag";
 import { dayOfWeekUTC, SATURDAY, todayInZone } from "@/lib/dates";
 import { sendSubscriptionRunEmail } from "@/lib/email";
 import {
@@ -70,6 +71,22 @@ function requireCronSecret(request: Request): NextResponse | null {
 }
 
 export async function GET(request: Request) {
+  // `vercel.json` is committed, so a second Vercel project building from the
+  // same branch registers the same schedule. Nothing scheduled belongs in a
+  // demo: there is no shared ledger for it to write to, and the emails it
+  // exists to send would be duplicates of the real project's.
+  //
+  // Belt and braces — the demo environment carries no `CRON_SECRET`, so the
+  // 503 below would already stop it, and no `RESEND_API_KEY`, so `sendEmail()`
+  // would refuse a third time. This return makes the intent readable instead of
+  // resting on two absent env vars.
+  if (IS_DEMO) {
+    return NextResponse.json(
+      { skipped: "demo mode", ranAt: null },
+      { status: 200 },
+    );
+  }
+
   const denied = requireCronSecret(request);
   if (denied) return denied;
 

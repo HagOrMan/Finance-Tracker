@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { SignOutButton } from "@/components/auth/sign-out-button";
@@ -12,6 +13,7 @@ import {
 import { getSessionUser } from "@/lib/auth-server";
 import { isOwnerUserId, ownerUserIds, sanitizeNextPath } from "@/lib/auth";
 import { APP_ICON, APP_TITLE } from "@/lib/config";
+import { IS_DEMO } from "@/lib/demo/flag";
 
 export const metadata: Metadata = {
   title: `Login · ${APP_TITLE}`,
@@ -23,6 +25,13 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
+  // The proxy already redirects /login away in demo mode, before it can build a
+  // Supabase client from credentials the demo build doesn't carry. This is the
+  // second lock on the same door: this is the one `async` server page in the
+  // app, and `getSessionUser()` two lines down is the exact call that throws
+  // when `NEXT_PUBLIC_SUPABASE_URL` is absent.
+  if (IS_DEMO) redirect("/");
+
   const params = await searchParams;
   const next = sanitizeNextPath(params.next);
   const user = await getSessionUser();

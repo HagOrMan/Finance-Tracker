@@ -19,6 +19,7 @@ import type {
   UpdateReceiptInput,
   UpdateSubscriptionInput,
 } from "@/lib/data/types";
+import { IS_DEMO } from "@/lib/demo/flag";
 // From the pure modules, not the `*-runner` ones — those are `server-only`.
 import type { SubscriptionRunResult } from "@/lib/subscriptions";
 import type { MonthlyDigest } from "@/lib/monthly-digest";
@@ -60,19 +61,35 @@ export function linkedDisbursements(error: unknown): Disbursement[] {
   return linkedRows<Disbursement>(error);
 }
 
+/**
+ * The single point where this app's browser code talks to its server — and
+ * therefore the one seam the demo build swaps.
+ *
+ * `demoRequest` returns a real `Response`, so everything below this line runs
+ * unchanged in both modes: the `res.ok` check, the `ApiError` construction, and
+ * the 409 `linked` payload the editors read back through `linkedRows`. Under
+ * Pattern A the browser has no other route to the data, so intercepting here
+ * covers the entire surface.
+ *
+ * The dynamic import matters: `IS_DEMO` is inlined at build time, so a
+ * production build sees a statically-false branch and never pulls the demo
+ * store, seed generator or transport into the bundle.
+ */
 async function request<T>(
   url: string,
   init?: { method: string; input?: unknown },
 ): Promise<T> {
-  const res = await fetch(url, {
-    method: init?.method ?? "GET",
-    ...(init?.input === undefined
-      ? {}
-      : {
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(init.input),
-        }),
-  });
+  const res = IS_DEMO
+    ? await (await import("@/lib/demo/transport")).demoRequest(url, init)
+    : await fetch(url, {
+        method: init?.method ?? "GET",
+        ...(init?.input === undefined
+          ? {}
+          : {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(init.input),
+            }),
+      });
   if (!res.ok) {
     const body: Record<string, unknown> = await res
       .json()

@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 
 import { Resend } from "resend";
 
+import { IS_DEMO } from "@/lib/demo/flag";
+
 /**
  * The one place mail leaves this app.
  *
@@ -54,6 +56,22 @@ export async function sendEmail({
   text: string;
 }): Promise<SendResult> {
   try {
+    // The single choke point for every email in the app, so this one guard
+    // covers the subscription-run notification, the weekly report and the
+    // monthly digest at once — including the copies a second Vercel project
+    // building from the same branch would otherwise try to send.
+    //
+    // It is the *innermost* of three layers, and the least important: the demo
+    // project's environment holds no `RESEND_API_KEY`, so the check below would
+    // already refuse, and no `CRON_SECRET`, so the scheduled path 503s before
+    // reaching here. This exists so the reason is explicit in the logs and in
+    // the code, rather than resting on an env var being absent.
+    if (IS_DEMO) {
+      const reason = "Demo mode — email sending is disabled";
+      console.warn(`[email] ${reason}; skipping send of "${subject}".`);
+      return { sent: false, reason };
+    }
+
     const apiKey = process.env.RESEND_API_KEY;
     const from = resolveFrom();
     if (!apiKey || !to || !from) {

@@ -25,6 +25,29 @@ puts Next's tagged Data Cache in front of every list read, write routes
 invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
 §3.1 — in particular the rule that every write route must call `invalidate*()`.
 
+**A public demo build exists, gated entirely behind `NEXT_PUBLIC_DEMO_MODE`.**
+Written but not yet deployed or type-checked — see Open. The plan and the audit
+that produced it are in `guides/demo-mode-guide.md`; the short version:
+
+- `src/lib/demo/flag.ts` is the only read of the env var. Everything else
+  imports `IS_DEMO`.
+- **The swap is one ternary** in `request()` in `src/hooks/use-finance-data.ts`.
+  Under Pattern A the browser's only route to data is `/api`, so intercepting
+  `fetch` there covers the whole surface; `src/lib/demo/transport.ts` answers
+  with a real `Response`, mirroring each route handler's schema and status
+  codes, and `src/lib/data/demo-source.ts` is a third `DataSource` backed by
+  `localStorage`.
+- **There is deliberately no `demo` branch in `getDataSource()`.** It runs
+  server-side, so a demo source there would give every visitor one shared
+  dataset, wiped on each cold start.
+- **`requireUser()` / `requireOwnerForApi()` are untouched.** The demo never
+  reaches a route handler. The one auth bypass is a single early return at the
+  top of `updateSession()` — placed above `createServerClient` because the demo
+  build carries no Supabase credentials and `requireEnv` would throw.
+- **Three independent locks on email**: no `RESEND_API_KEY` in the demo
+  environment, an `IS_DEMO` return in `sendEmail()` (the one choke point for all
+  three templates), and an early return in the cron handler.
+
 ## Open
 
 1. **Monthly digest — written, not yet seen against real data.** Model, runner,
@@ -116,6 +139,29 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
      exceeds the token lifetime, a visit costs one rotation at any expiry, so at
      a once-every-few-days cadence 3600 s and 48 h produce the same number. It
      helps consecutive-day use only, as a convenience.
+
+10. **Demo mode — written, never compiled or run.** No build, dev or test
+    command was run while writing it (global constraint), so *nothing below has
+    been verified*. In order:
+    - **`pnpm tsc --noEmit` and `pnpm build` with the flag unset**, first —
+      confirming production is unchanged matters more than the demo working.
+      Then `NEXT_PUBLIC_DEMO_MODE=true pnpm dev` for the demo path.
+    - **Walk the checklist in `guides/demo-mode-guide.md` §12**, including the
+      three repo-specific rows in Appendix A: a 409 on deleting a refunded
+      receipt, "Run due charges" twice being a no-op the second time, and the
+      `/reports/monthly` month picker stepping back through every seeded month.
+    - **Look at the seed's numbers with fresh eyes** (`src/lib/demo/seed.ts`).
+      The frequencies and amounts are guesses; the shape only has to be
+      *plausible*, but a chart that looks broken is worse than no demo. The
+      big-spender rows and the one fully-refunded receipt exist to make those
+      code paths reachable — check they actually are.
+    - **Create the second Vercel project** off `main` with
+      `NEXT_PUBLIC_DEMO_MODE=true` **and no other env var**, and set its
+      Production Branch so the demo is served from a production domain (preview
+      URLs sit behind a Vercel login).
+    - Not carried over from the guide, on purpose: its advice to make cron
+      routes return 200. `requireCronSecret()` already 503s when the secret is
+      unset, and that fail-closed direction is deliberate.
 
 ## Settled
 

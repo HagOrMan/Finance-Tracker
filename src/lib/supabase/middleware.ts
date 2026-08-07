@@ -3,6 +3,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { AuthError, User } from "@supabase/supabase-js";
 
 import { isOwnerUserId } from "@/lib/auth";
+import { IS_DEMO } from "@/lib/demo/flag";
 import { requireEnv } from "@/lib/env";
 import { logAuthFailure } from "@/lib/supabase/auth-log";
 
@@ -151,6 +152,35 @@ async function getUserSingleFlight(request: NextRequest) {
 }
 
 export async function updateSession(request: NextRequest) {
+  // -------------------------------------------------------------------------
+  // Demo mode: one explicit early return, and it must stay first.
+  //
+  // The demo build ships with NO Supabase credentials at all, so
+  // `createServerClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), …)` below would
+  // throw on every request and 500 the whole site. This has to run before that
+  // call, not merely before the authorization checks.
+  //
+  // Note where the bypass is NOT: `requireUser()` and `requireOwnerForApi()`
+  // are untouched. `CLAUDE.md` makes the owner gate a hard rule with exactly
+  // one exception, and a second branch inside it would be a second exception in
+  // the file whose entire job is to have one. In demo mode no route handler is
+  // reached at all — `src/lib/demo/transport.ts` answers every request in the
+  // browser — so there is nothing to bypass.
+  //
+  // `/login` and `/auth/*` redirect to the app rather than rendering: the login
+  // page is the one `async` server page in the app and it calls
+  // `getSessionUser()`, which would hit the same missing-credentials throw.
+  // -------------------------------------------------------------------------
+  if (IS_DEMO) {
+    const { pathname } = request.nextUrl;
+    if (pathname === "/login" || pathname.startsWith("/auth")) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    return NextResponse.next({
+      request: { headers: new Headers(request.headers) },
+    });
+  }
+
   // Rebuilt on each call (not hoisted) so it reflects request.cookies as of
   // that moment — mutated below once we know whether there are writes.
   function nextResponse() {
