@@ -60,7 +60,8 @@ interface FiltersState extends Filters {
    * Back to a first-visit view — **all** filters, not just this page's.
    *
    * Deliberately global. The filters are one persisted object shared across
-   * pages, so a per-page reset would leave the bar on `/daily` claiming
+   * pages, so a per-page reset would leave the bar on the daily page (`/`)
+   * claiming
    * everything is cleared while `/disbursements` was still scoped to one
    * entity. The button that calls this says "Reset filters", not "Reset this
    * page".

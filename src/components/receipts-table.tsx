@@ -109,8 +109,8 @@ function compareValues(a: string | number, b: string | number): number {
 /**
  * The receipts table, in two modes.
  *
- * Read-only by default — `/`, `/daily` and `/monthly` pass neither new prop and
- * are unaffected. `/manage` turns on `editable` (per-row edit button, a "last
+ * Read-only by default — `/` and `/monthly` pass neither new prop and are
+ * unaffected. `/manage` turns on `editable` (per-row edit button, a "last
  * edited" column, the subscription badge) and `selectable` (checkbox column
  * plus the bulk action bar). ARCHITECTURE.md is explicit that this is extended
  * rather than forked: one table, one set of filters, one place to fix.
@@ -187,8 +187,10 @@ export function ReceiptsTable({
       return cmp !== 0 ? cmp * dir : b.id - a.id;
     });
 
-  // After the sort, so "top 10" on the overview follows whatever is on screen
-  // rather than always meaning "10 most recent".
+  // After the sort, so a "top N" slice follows whatever is on screen rather
+  // than always meaning "the N most recent". No page passes `limit` since the
+  // overview was folded into `/`; the prop stays for the next one that wants a
+  // preview slice.
   if (limit) filtered = filtered.slice(0, limit);
 
   function toggleSort(column: SortColumn) {
@@ -506,8 +508,8 @@ export function ReceiptsTable({
         </TableBody>
 
         {/* Sums exactly the rows above, which is why it's suppressed when
-            `limit` is in play: on the overview's "10 most recent" a total would
-            be the sum of an arbitrary ten, and a footer labelled "Total" that
+            `limit` is in play: on a "top 10" slice a total would be the sum
+            of an arbitrary ten, and a footer labelled "Total" that
             silently means "total of a slice" is worse than no footer.
 
             It exists at all because this table carries its own category / store

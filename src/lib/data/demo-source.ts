@@ -360,9 +360,10 @@ export class DemoDataSource implements DataSource {
       price: subscription.price,
       discount: 0,
       discount_percentage: 0,
-      // The human-readable half of the provenance; `subscription_id` is the
+      // The subscription's own note, falling back to its name — the
+      // human-readable half of the provenance, where `subscription_id` is the
       // machine-readable half. Matches `SupabaseDataSource`.
-      note: subscription.name,
+      note: subscription.note ?? subscription.name,
       date,
       subscription_id: subscription.id,
       updated_at: nowStamp(),

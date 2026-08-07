@@ -428,9 +428,10 @@ export function generateSeed(): DemoSeed {
         price: template.price,
         discount: 0,
         discount_percentage: 0,
-        // The subscription's name, matching what `insertSubscriptionCharge`
-        // writes — the human-readable half of a generated row's provenance.
-        note: template.name,
+        // Matching what `insertSubscriptionCharge` writes — the subscription's
+        // own note where it has one, its name otherwise. The human-readable
+        // half of a generated row's provenance.
+        note: template.note ?? template.name,
         date,
         subscription_id: id,
       });

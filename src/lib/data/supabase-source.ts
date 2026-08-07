@@ -413,10 +413,13 @@ export class SupabaseDataSource implements DataSource {
         price: subscription.price,
         discount: 0,
         discount_percentage: 0,
-        // The subscription's name, so a generated row reads as itself in the
-        // receipts table. `subscription_id` is the machine-readable provenance;
-        // this is the human-readable half.
-        note: subscription.name,
+        // The subscription's own note, falling back to its name. This is the
+        // human-readable half of the provenance (`subscription_id` is the
+        // machine-readable half), and the note is what you wrote *about* this
+        // subscription — so if there is one it should be what every charge it
+        // generates says. Blank notes are stored as null by the editor, so the
+        // fallback is what an un-noted subscription gets.
+        note: subscription.note ?? subscription.name,
         date,
         subscription_id: subscription.id,
       })

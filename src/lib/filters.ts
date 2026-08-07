@@ -159,5 +159,14 @@ export function priceKey(filters: Filters): "actual_price" | "price" {
 }
 
 export function priceLabel(filters: Filters): string {
-  return filters.subtractRefunds ? "Net paid ($)" : "Gross paid ($)";
+  return `${priceLabelShort(filters)} ($)`;
+}
+
+/**
+ * The same label without the `($)` suffix, for places that already read as
+ * prose rather than as a column header — "Total (Net paid)", "click Net paid to
+ * sort". Derived from one string so the two can't drift.
+ */
+export function priceLabelShort(filters: Filters): string {
+  return filters.subtractRefunds ? "Net paid" : "Gross paid";
 }

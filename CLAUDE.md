@@ -22,6 +22,8 @@ Migrated from a Streamlit/Python original, preserved untouched in
 | `PROGRESS.md` | Current state and open work. Update as you go |
 | `.env.example` | Every env var. Treat `.env.local` as user-owned; never commit it |
 | `supabase/migrations/*.sql` | The schema. Source of truth, not any prose |
+| `guides/demo-mode-guide.md` | How demo mode was built **here**, and the audit behind it. Includes the checklist to walk before the demo is linked anywhere |
+| `guides/demo-mode-playbook.md` | The portable version, for other repos. Nothing in it is specific to this app |
 
 ## Stack
 
@@ -90,6 +92,13 @@ checkable by hand.
   only clears the browser's cache. Read-only list endpoints use the
   `load*Cached` helpers; **anything that writes, or reads in order to decide a
   write, keeps calling `getDataSource()` directly.** See `ARCHITECTURE.md` §3.1.
+- **Demo mode never touches the auth gates.** `NEXT_PUBLIC_DEMO_MODE` swaps the
+  data layer at `request()` in `src/hooks/use-finance-data.ts` and bypasses
+  navigation once, at the top of `updateSession()`. `requireUser()` and
+  `requireOwnerForApi()` have no demo branch and must not grow one — under
+  Pattern A they are the only gate, and a conditional one reads as optional.
+  See `ARCHITECTURE.md` §8. Also: every entry into `src/lib/demo/` is an
+  `await import(...)`, or the seed ships to production visitors.
 - **Dates are plain `"YYYY-MM-DD"` strings** — never `new Date("YYYY-MM-DD")`
   for display or comparison.
 - **`src/lib/colors.ts` is the only source of category colour.** Same category,

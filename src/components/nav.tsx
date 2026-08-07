@@ -30,15 +30,16 @@ import { APP_ICON, APP_TITLE } from "@/lib/config";
 // desktop, and the two groups are different intents anyway — one asks "what did
 // I spend", the other "what is wrong with my data".
 const NAV_LINKS = [
-  { href: "/", label: "Overview" },
-  { href: "/daily", label: "Daily" },
+  // `/` is the daily breakdown — there is no separate overview any more, and
+  // `/daily` redirects here.
+  { href: "/", label: "Daily" },
   { href: "/monthly", label: "Monthly" },
   { href: "/categories", label: "Categories" },
   { href: "/savings", label: "Savings" },
   { href: "/disbursements", label: "Disbursements" },
   // Analysis, not data management — so it stays inline rather than joining the
-  // Manage popover. That takes this row to 7 on desktop; it already scrolls
-  // horizontally, but this is the one to watch if an eighth ever appears.
+  // Manage popover. That takes this row to 6 on desktop (7 before Overview was
+  // folded into `/`); this is the one to watch if an eighth ever appears.
   { href: "/reports", label: "Reports" },
 ];
 
@@ -51,7 +52,7 @@ const MANAGE_LINKS = [
 /**
  * The breakpoint at which the inline link row fits.
  *
- * Measured, not guessed: the six analysis links plus "Manage" come to roughly
+ * Measured, not guessed: the analysis links plus "Manage" come to roughly
  * 640px of buttons, and with the wordmark, theme toggle and sign-out either
  * side the row needs ~900px. `sm` and `md` are both too narrow — below `lg`
  * the row used to scroll sideways, which on a phone meant half the app was

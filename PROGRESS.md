@@ -12,13 +12,19 @@ stores/entities hygiene, the CRUD tables, subscriptions, and spending reports
 are live. The SQLite→Supabase backfill has run; all three migrations in
 `supabase/migrations/` have been applied.
 
-Routes: `/` `/daily` `/monthly` `/categories` `/savings` `/disbursements`
-`/reports` `/reports/monthly` · `/stores` `/manage` `/subscriptions` behind the
+Routes: `/` `/monthly` `/categories` `/savings` `/disbursements` `/reports`
+`/reports/monthly` · `/stores` `/manage` `/subscriptions` behind the
 "Manage ▾" menu.
 
+**`/` is the daily breakdown.** The separate Overview page is gone — it was a
+weaker version of the same view, so the page you wanted was never the one you
+landed on. Its two figures worth keeping (avg / day, total refunded) joined the
+stat row, which is now six cards. `/daily` survives as a `redirect("/")` so old
+bookmarks and the docs' references still land somewhere.
+
 `/reports/monthly` is reached by a link on `/reports`, **not** a `Nav` entry —
-that row is already at seven inline links and its own comment flags an eighth as
-the one to watch.
+that row is at six inline links (seven before Overview was folded into `/`) and
+its own comment flags an eighth as the one to watch.
 
 **Reads are cached server-side** as of the caching pass: `src/lib/data/cache.ts`
 puts Next's tagged Data Cache in front of every list read, write routes
@@ -26,27 +32,24 @@ invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
 §3.1 — in particular the rule that every write route must call `invalidate*()`.
 
 **A public demo build exists, gated entirely behind `NEXT_PUBLIC_DEMO_MODE`.**
-Written but not yet deployed or type-checked — see Open. The plan and the audit
-that produced it are in `guides/demo-mode-guide.md`; the short version:
+Verified locally in both modes; the Vercel project for it isn't created yet (see
+Open). Why it is shaped this way is in `ARCHITECTURE.md` §8; the audit that
+produced it, and the checklist to walk before linking the demo anywhere, are in
+`guides/demo-mode-guide.md`. Where the code is:
 
-- `src/lib/demo/flag.ts` is the only read of the env var. Everything else
-  imports `IS_DEMO`.
-- **The swap is one ternary** in `request()` in `src/hooks/use-finance-data.ts`.
-  Under Pattern A the browser's only route to data is `/api`, so intercepting
-  `fetch` there covers the whole surface; `src/lib/demo/transport.ts` answers
-  with a real `Response`, mirroring each route handler's schema and status
-  codes, and `src/lib/data/demo-source.ts` is a third `DataSource` backed by
-  `localStorage`.
-- **There is deliberately no `demo` branch in `getDataSource()`.** It runs
-  server-side, so a demo source there would give every visitor one shared
-  dataset, wiped on each cold start.
-- **`requireUser()` / `requireOwnerForApi()` are untouched.** The demo never
-  reaches a route handler. The one auth bypass is a single early return at the
-  top of `updateSession()` — placed above `createServerClient` because the demo
-  build carries no Supabase credentials and `requireEnv` would throw.
-- **Three independent locks on email**: no `RESEND_API_KEY` in the demo
-  environment, an `IS_DEMO` return in `sendEmail()` (the one choke point for all
-  three templates), and an early return in the cron handler.
+| Piece | File |
+| --- | --- |
+| The flag — the only read of the env var | `src/lib/demo/flag.ts` |
+| The seam — one ternary | `request()` in `src/hooks/use-finance-data.ts` |
+| Route-handler stand-in, returns a real `Response` | `src/lib/demo/transport.ts` |
+| Third `DataSource`, backed by `localStorage` | `src/lib/data/demo-source.ts` |
+| Store and seed generator | `src/lib/demo/store.ts`, `seed.ts` |
+| Boot gate and banner | `src/components/demo/` |
+| The one auth bypass | top of `updateSession()` in `src/lib/supabase/middleware.ts` |
+
+`guides/demo-mode-playbook.md` is the portable version of all this, for the
+other repos. It is the file to update when something here turns out to have been
+wrong — not this one.
 
 ## Open
 
@@ -140,28 +143,46 @@ that produced it are in `guides/demo-mode-guide.md`; the short version:
      a once-every-few-days cadence 3600 s and 48 h produce the same number. It
      helps consecutive-day use only, as a convenience.
 
-10. **Demo mode — written, never compiled or run.** No build, dev or test
-    command was run while writing it (global constraint), so *nothing below has
-    been verified*. In order:
-    - **`pnpm tsc --noEmit` and `pnpm build` with the flag unset**, first —
-      confirming production is unchanged matters more than the demo working.
-      Then `NEXT_PUBLIC_DEMO_MODE=true pnpm dev` for the demo path.
-    - **Walk the checklist in `guides/demo-mode-guide.md` §12**, including the
-      three repo-specific rows in Appendix A: a 409 on deleting a refunded
-      receipt, "Run due charges" twice being a no-op the second time, and the
-      `/reports/monthly` month picker stepping back through every seeded month.
-    - **Look at the seed's numbers with fresh eyes** (`src/lib/demo/seed.ts`).
-      The frequencies and amounts are guesses; the shape only has to be
-      *plausible*, but a chart that looks broken is worse than no demo. The
-      big-spender rows and the one fully-refunded receipt exist to make those
-      code paths reachable — check they actually are.
+10. **Demo mode — built and verified locally; not yet deployed.** Type-checks,
+    builds, and runs correctly in both modes. What's left is the deployment
+    half:
     - **Create the second Vercel project** off `main` with
-      `NEXT_PUBLIC_DEMO_MODE=true` **and no other env var**, and set its
-      Production Branch so the demo is served from a production domain (preview
-      URLs sit behind a Vercel login).
+      `NEXT_PUBLIC_DEMO_MODE=true` **and no other env var** — that absence is
+      the actual security boundary, not any code-level guard. Set its
+      Production Branch so the demo is served from a *production* domain;
+      preview URLs sit behind a Vercel login and would show visitors a login
+      wall.
+    - **Re-walk `guides/demo-mode-guide.md` §12 against the deployed URL**, not
+      just localhost. The rows that can only fail in production are the network
+      tab showing zero third-party requests, the bundle containing no
+      `supabase.co` or `eyJ`, and `/robots.txt` blocking crawlers.
+    - Expect `curl`ing any `/api/*` route on the deployed demo to return **500,
+      not 401** — the handler still starts with `requireOwnerForApi()`, which
+      reaches `requireEnv` and throws with no Supabase credentials present.
+      Nothing is behind it; the alternative is a demo branch inside the owner
+      gate, which is exactly what this design refuses.
     - Not carried over from the guide, on purpose: its advice to make cron
       routes return 200. `requireCronSecret()` already 503s when the secret is
       unset, and that fail-closed direction is deliberate.
+
+11. **The navigation/UX pass is written but not compiled** (global constraint —
+    no build or type-check was run). Run `pnpm tsc --noEmit` and `pnpm dev`,
+    then look at four things:
+    - **`/` in a narrow window.** Six stat cards go `2 → 3 → 6` across
+      `sm`/`xl`; the "Biggest day (YYYY-MM-DD)" label is the one that will wrap
+      badly if any breakpoint is wrong.
+    - **Savings by category with every category present.** `longLabels` angles
+      the ticks −30° and truncates at 18 chars with the full name in an SVG
+      `<title>`; the chart grows 60px and takes a 68px bottom margin to fit
+      them. Check nothing clips at mobile width.
+    - **An existing receipt whose category is off-list.** `CategorySelect` no
+      longer has a free-text option, and the off-list value is injected as an
+      extra item — confirm it shows selected and survives a save.
+    - **A subscription with a note, run through "Run due charges".** The
+      generated receipt's note should be the subscription's note now; one
+      *without* a note still falls back to its name, since a generated row with
+      an empty note reads as anonymous in the receipts table. Say so if the
+      preference is a literal empty note instead.
 
 ## Settled
 
@@ -171,15 +192,17 @@ that produced it are in `guides/demo-mode-guide.md`; the short version:
   matching the original Streamlit behaviour. `/monthly` deliberately keeps the
   category-summed `StackedCategoryBarChart` — 200 segments in a month bar is
   noise, not detail.
-- **Date-range presets (7d / 30d / 90d / 1y) live on the shared `FilterBar`, not
-  on `/daily` or `/reports`.** They write two plain dates into the one filter
-  every date-range page reads, so a preset that existed on only one page would
-  be setting state the others can't see a control for. They are *trailing*
-  windows ending **today**, unlike a report window, which ends yesterday so it
-  never counts a day still being spent — a filter is looked through, not
-  compared against a baseline. `/reports` stays period-only and filter-free
-  (ARCHITECTURE.md): "gifts, past year, with the daily chart" is a `/daily`
-  question, and a report can't express it.
+- **Date-range presets (7d / 30d / 90d / 1y) live in the shared
+  `DateRangeField`, not on any one page.** They write two plain dates into the
+  one filter every date-range page reads, so a preset that existed on only one
+  page would be setting state the others can't see a control for. That is also
+  why `/disbursements` now imports `DateRangeField` rather than keeping its own
+  pair of date inputs — it reads the same two store fields, so it gets the same
+  control. They are *trailing* windows ending **today**, unlike a report window,
+  which ends yesterday so it never counts a day still being spent — a filter is
+  looked through, not compared against a baseline. `/reports` stays period-only
+  and filter-free (ARCHITECTURE.md): "gifts, past year, with the daily chart" is
+  a question for `/`, and a report can't express it.
 - **The date range is the one filter that doesn't persist.** Categories, stores,
   discount, net-paid, entities and disbursement type all survive a reload;
   `startDate`/`endDate` are re-derived from `defaultFilters` on every load, so a
@@ -213,13 +236,19 @@ Quality only — no bugs. Noted so they aren't rediscovered as findings.
 - **`ReceiptsTable` sorts client-side over the whole filtered array**, which is
   right at this ledger's size and would need rethinking (server-side ordering,
   or virtualisation) only if a single view ever held tens of thousands of rows.
-  Its footer total is suppressed when `limit` is set, so the overview's top-10
-  slice never shows a total of an arbitrary ten.
+- **`ReceiptsTable`'s `limit` prop has no caller** since the Overview page (its
+  only one) was folded into `/`. Kept rather than deleted because a preview
+  slice is a plausible next need and the footer-suppression logic that goes with
+  it is the non-obvious half. Delete it if nothing wants it in a year.
+- **`SingleSeriesBarChart`'s `longLabels` is only on savings-by-category.**
+  `/disbursements`' "By entity" chart has the same long-name risk and would
+  take the same one-word prop; it just wasn't asked for.
 - Small duplications: the bucket+category `Map` accumulation (now only within
-  `/monthly`, twice — `/daily` no longer does it), the
+  `/monthly`, twice — the daily page no longer does it), the
   `discount > 0 || discount_percentage > 0` predicate, the weekly/daily
-  bucketing threshold shared by `/savings` and `/disbursements`, and the local
-  table-filter-state pattern in three tables.
+  bucketing threshold shared by `/savings` and `/disbursements`, the local
+  table-filter-state pattern in three tables, and `/monthly`'s hand-rolled
+  `subtractRefunds ? "Net paid ($)" : …` (now `priceLabel()` in `filters.ts`).
 - ~~`src/store/filters-store.ts` exposes no `hasHydrated` gate.~~ **Done** —
   the store carries `hasHydrated` (not persisted), `FiltersHydrator` flips it
   after `rehydrate()` resolves, and `useFilteredReceipts` folds it into

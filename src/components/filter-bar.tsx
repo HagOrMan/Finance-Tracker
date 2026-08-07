@@ -162,17 +162,22 @@ export function FilterBar({
  * The default scope control: two dates, plus quick-picks for the spans actually
  * compared often ("what did I spend on gifts this past year").
  *
- * The presets sit here rather than on `/daily` alone because the date range is
- * the *shared* filter — a preset that only existed on one page would set state
- * every other page reads, from a control they don't have. `/monthly` never
+ * The presets sit here rather than on the daily page alone because the date
+ * range is the *shared* filter — a preset that only existed on one page would
+ * set state every other page reads, from a control they don't have. `/monthly` never
  * renders this (it replaces the whole block via `leading`), so its month
  * multiselect stays the only scope control there, which is the point.
  *
  * Reads the store itself instead of taking props: when a page passes `leading`
  * this component doesn't mount, so those three subscriptions don't exist and a
  * date change can't re-render `/monthly`'s bar.
+ *
+ * Exported because `/disbursements` keeps its own filter bar (see above) but
+ * scopes by the *same* two store fields, so it gets the same control rather
+ * than a second pair of bare date inputs with no quick-picks. At most one of
+ * these mounts per page, which is what makes the fixed `filter-start` id safe.
  */
-function DateRangeField() {
+export function DateRangeField() {
   const startDate = useFiltersStore((s) => s.startDate);
   const endDate = useFiltersStore((s) => s.endDate);
   const setDateRange = useFiltersStore((s) => s.setDateRange);

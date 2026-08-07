@@ -139,10 +139,14 @@ export default function SavingsPage() {
 
           <div>
             <h2 className="mb-3 text-lg font-medium text-foreground">Savings by category</h2>
+            {/* `longLabels`: category names run to "Professional Development
+                (including events)", and straight ticks meant Recharts hid
+                whichever ones collided. */}
             <SingleSeriesBarChart
               data={savingsByCategory}
               colorMap={colorMap}
               seriesName="Savings"
+              longLabels
             />
           </div>
 

@@ -5,7 +5,12 @@ import { useMemo } from "react";
 import { useMergedReceipts } from "@/hooks/use-finance-data";
 import { useCategoryColors } from "@/hooks/use-category-colors";
 import { useFiltersStore } from "@/store/filters-store";
-import { applyFilters, priceKey, priceLabel } from "@/lib/filters";
+import {
+  applyFilters,
+  priceKey,
+  priceLabel,
+  priceLabelShort,
+} from "@/lib/filters";
 
 export function useFilteredReceipts() {
   const { data, isLoading, error } = useMergedReceipts();
@@ -50,6 +55,7 @@ export function useFilteredReceipts() {
     filters,
     pcol: priceKey(filters),
     plabel: priceLabel(filters),
+    plabelShort: priceLabelShort(filters),
     colorMap,
   };
 }

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RefreshButton, ResetFiltersButton } from "@/components/filter-actions";
+import { DateRangeField } from "@/components/filter-bar";
 import { FilterShell } from "@/components/filter-shell";
 import { MultiSelect } from "@/components/multi-select";
 import { StatCard } from "@/components/charts/stat-card";
@@ -44,7 +45,8 @@ export default function DisbursementsPage() {
   const endDate = useFiltersStore((s) => s.endDate);
   const entities = useFiltersStore((s) => s.entities);
   const disbursementType = useFiltersStore((s) => s.disbursementType);
-  const setDateRange = useFiltersStore((s) => s.setDateRange);
+  // No `setDateRange` here — `DateRangeField` owns both dates and writes them
+  // to the store itself. This page only reads them, to filter with.
   const setEntities = useFiltersStore((s) => s.setEntities);
   const setDisbursementType = useFiltersStore((s) => s.setDisbursementType);
   // This page has its own filter bar rather than using `useFilteredReceipts`,
@@ -188,30 +190,10 @@ export default function DisbursementsPage() {
           (entities.length > 0 ? 1 : 0) + (disbursementType !== "All" ? 1 : 0)
         }
       >
-        <div className="flex flex-col gap-1">
-          <Label
-            className="text-xs font-medium text-muted-foreground"
-            htmlFor="disb-start"
-          >
-            Date range
-          </Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="disb-start"
-              type="date"
-              value={startDate}
-              onChange={(e) => setDateRange(e.target.value, endDate)}
-              className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
-            />
-            <span className="text-muted-foreground">-</span>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setDateRange(startDate, e.target.value)}
-              className="w-37.5 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1"
-            />
-          </div>
-        </div>
+        {/* The shared control, not a local copy: this page scopes by the same
+            `startDate`/`endDate` store fields every other page does, so it gets
+            the same 7d/30d/90d/1y quick-picks rather than bare date inputs. */}
+        <DateRangeField />
         <MultiSelect
           label="Entity"
           options={entityOptions}

@@ -188,6 +188,18 @@ Consequences worth knowing:
   report's `COMPARISON_EXCLUDED_CATEGORIES`, reusing `isExcludedCategory` so
   "same as the email" is true by construction. A category added later is not
   swept in silently — press the preset again.
+- **`DateRangeField` is the one date-range control**, exported from
+  `filter-bar.tsx` and used both inside `FilterBar` and by `/disbursements`,
+  which keeps its own bar but scopes by the same two store fields. Both dates
+  and the 7d/30d/90d/1y quick-picks therefore behave identically everywhere.
+  At most one instance mounts per page, which is what makes its fixed
+  `filter-start` id safe.
+- **`CategorySelect` has no free-text option.** Categories are free text in the
+  database — the list is a convenience, not a constraint — but a hand-typed
+  category becomes its own colour and its own bar on every chart for the sake
+  of one receipt, so the picker offers only `CATEGORY_OPTIONS` (which ends in a
+  literal "Other"). A row whose stored category is off-list keeps it: the value
+  is injected as an extra item so opening and saving can't silently rewrite it.
 - `/stores`, `/manage` and `/reports` deliberately have **no `FilterBar`** — the
   first two are lenses over the whole ledger (a 30-day default would hide the
   two-year-old mis-filed receipt you came for), and a report's window is defined
@@ -218,8 +230,8 @@ Consequences worth knowing:
 
 ### Charts
 
-- **`/daily` draws one stacked segment per receipt; `/monthly` sums by
-  category.** Recharts stacks by `dataKey`, so per-receipt segments need a key
+- **The daily breakdown (`/`, the landing page) draws one stacked segment per
+  receipt; `/monthly` sums by category.** Recharts stacks by `dataKey`, so per-receipt segments need a key
   per receipt-slot. Keys are `(category, nth occurrence that day)` rather than
   stack position — every series then holds one category, its fill is a
   constant, and no `shape` render prop is needed. The legend is given an
@@ -261,6 +273,14 @@ implementation.
   date is the worst failure mode the feature has.
 - The **Overdue badge is the real safety net**, not the email — a subscription
   still overdue a day later means the cron isn't running.
+- **A generated receipt's `note` is the subscription's note, falling back to its
+  name.** The note is what you wrote *about* the subscription, so it is what
+  every charge it generates should say; the name is the fallback for the
+  un-noted ones, because a generated row still has to read as itself in the
+  receipts table. `subscription_id` remains the machine-readable provenance and
+  is unaffected. Both `SupabaseDataSource.insertSubscriptionCharge` and the
+  demo source's copy must agree, and `src/lib/demo/seed.ts` seeds the same way
+  so the demo's history matches what a run would write.
 
 ### Reports (`/reports`)
 
@@ -532,6 +552,77 @@ Each of these was decided, not overlooked.
 | Seasonal (month-of-year) forecasting | Needs two of each calendar month before September can be compared to a September. Revisit once the ledger is two years deep |
 | A balance or account concept, and therefore true runway | Net flow answers the same question without a schema change. Build it when "how long does this last" needs an actual number |
 | Multi-currency, split subscriptions, pre-charge reminders | Never asked for |
+
+---
+
+## 8. Demo mode
+
+A second Vercel project builds this same repo, same branch, with
+`NEXT_PUBLIC_DEMO_MODE=true` and **no other environment variable**. That absence
+is the security boundary; everything below is convenience on top of it. Code
+cannot exfiltrate what the environment does not hold.
+
+`src/lib/demo/flag.ts` is the only read of the var. Everything else imports
+`IS_DEMO`.
+
+**The seam is `request()` in `src/hooks/use-finance-data.ts`, and it could not
+be anywhere else.** Pattern A (§2) puts the whole data layer on the server, so
+`getDataSource()` never runs anywhere that can see a visitor's `localStorage`.
+The browser's only route to data is `/api`, which makes that one function the
+entire surface. `src/lib/demo/transport.ts` answers there with a real
+`Response` — not a parsed body, and not a thrown `ApiError`, which would have to
+be imported from the module that imports the transport.
+
+- **There is deliberately no `demo` branch in `getDataSource()`.** It is the
+  obvious move and it produces a demo that doesn't work: the source runs in a
+  Vercel function, so every visitor would share one dataset, it would vanish on
+  each cold start, and one visitor's Reset would reset everybody.
+- **`DemoDataSource` implements `DataSource` anyway**, and lives beside its two
+  siblings in `src/lib/data/`. It is the only one that runs in the browser. The
+  interface is what keeps it honest: a method added to `DataSource` breaks the
+  demo build rather than silently leaving a feature dead.
+- **The transport mirrors status codes, not just data.** `linkedRows()` keys off
+  a 409 and the editors render the blocking rows from its `linked` payload, so a
+  demo returning 500 there would silently lose both delete guards.
+- **Three things Postgres does in production are re-implemented in the store**,
+  because each is a *behaviour* and not a detail: the `updated_at` trigger, the
+  two foreign keys behind the delete guards, and
+  `unique (subscription_id, date)`. Without the last one, pressing "Run due
+  charges" twice double-charges in the demo and doesn't in production.
+- **Seed depth is set by the app's own analytics windows**, not by taste — 13
+  months, because `BIG_SPENDER.medianMonths` is 12 and `DIGEST_BASELINE_MONTHS`
+  is 6 behind the newest complete month. A shallower seed renders a projection
+  with nothing to trim.
+
+**The one auth bypass is a single early return at the top of `updateSession()`,
+and its position is load-bearing.** It must precede `createServerClient`, not
+merely the authorization checks: the demo build has no Supabase credentials, so
+`requireEnv("NEXT_PUBLIC_SUPABASE_URL")` would throw on every request. `/login`
+and `/auth/*` redirect to `/` there, because `/login` is the app's one `async`
+server page and `getSessionUser()` hits the same throw.
+
+**`requireUser()` and `requireOwnerForApi()` are untouched, and must stay that
+way.** A demo branch inside the owner gate would be a second exception in the
+one place this app allows exactly one (§2), and the gate would no longer be
+readable as unconditional. The demo doesn't need one: no route handler is ever
+reached. The visible consequence is that `curl`ing `/api/*` on the deployed demo
+returns 500 rather than 401 — the handler runs, reaches `requireEnv`, and
+throws. Nothing is behind it.
+
+**Email is stopped at `sendEmail()`**, the single choke point all three
+templates funnel through, rather than at each route. The cron handler also
+returns early: `vercel.json` is committed, so the demo project registers the
+same schedule, and nothing scheduled belongs in a demo.
+
+**Every entry point into demo code is an `await import(...)`.** A
+build-time-false `IS_DEMO` branch removes the *call*, not the *import* — and
+`DemoBoot` and `DemoBanner` mount on every page in both modes, so a static
+import there would ship the seed generator and its fictional-world tables to
+production visitors.
+
+---
+
+## 9. Scheduling
 
 **Vercel Hobby allows one cron.** `vercel.json` holds it at `0 12 * * *`
 (08:00 EDT / 07:00 EST) and it drives all three scheduled jobs: subscription
