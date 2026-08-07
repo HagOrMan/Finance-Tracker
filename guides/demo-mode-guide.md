@@ -4,7 +4,7 @@ How the public, no-login demo build of **this repo** was designed and built, and
 
 **Going to another repo? Use `demo-mode-playbook.md` instead** — the portable version, with none of this app's naming in it, and with the from-scratch data-layer work that this repo didn't need. This file stays because §12's checklist is still the thing to walk before the demo is linked anywhere, and Appendix A records why several of the playbook's default answers were overridden here.
 
-Status: built and verified locally. See `PROGRESS.md` for what's left, and `ARCHITECTURE.md` §8 for the invariants that must survive future work.
+Status: **deployed and live**, verified against the deployed URL. `ARCHITECTURE.md` §8 holds the invariants that must survive future work; §12's checklist below is worth re-walking after any change to the data layer, the auth path, or the seed.
 
 ---
 

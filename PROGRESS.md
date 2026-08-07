@@ -31,11 +31,12 @@ puts Next's tagged Data Cache in front of every list read, write routes
 invalidate by tag, and refetch-on-window-focus is off. See `ARCHITECTURE.md`
 §3.1 — in particular the rule that every write route must call `invalidate*()`.
 
-**A public demo build exists, gated entirely behind `NEXT_PUBLIC_DEMO_MODE`.**
-Verified locally in both modes; the Vercel project for it isn't created yet (see
-Open). Why it is shaped this way is in `ARCHITECTURE.md` §8; the audit that
-produced it, and the checklist to walk before linking the demo anywhere, are in
-`guides/demo-mode-guide.md`. Where the code is:
+**A public demo build is deployed and live**, gated entirely behind
+`NEXT_PUBLIC_DEMO_MODE` — a second Vercel project off `main` whose environment
+holds that one variable and nothing else. Verified against the deployed URL, not
+just localhost. Why it is shaped this way is in `ARCHITECTURE.md` §8; the audit
+that produced it, and the checklist to re-walk after any change that touches the
+data layer or auth, are in `guides/demo-mode-guide.md`. Where the code is:
 
 | Piece | File |
 | --- | --- |
@@ -143,29 +144,7 @@ wrong — not this one.
      a once-every-few-days cadence 3600 s and 48 h produce the same number. It
      helps consecutive-day use only, as a convenience.
 
-10. **Demo mode — built and verified locally; not yet deployed.** Type-checks,
-    builds, and runs correctly in both modes. What's left is the deployment
-    half:
-    - **Create the second Vercel project** off `main` with
-      `NEXT_PUBLIC_DEMO_MODE=true` **and no other env var** — that absence is
-      the actual security boundary, not any code-level guard. Set its
-      Production Branch so the demo is served from a *production* domain;
-      preview URLs sit behind a Vercel login and would show visitors a login
-      wall.
-    - **Re-walk `guides/demo-mode-guide.md` §12 against the deployed URL**, not
-      just localhost. The rows that can only fail in production are the network
-      tab showing zero third-party requests, the bundle containing no
-      `supabase.co` or `eyJ`, and `/robots.txt` blocking crawlers.
-    - Expect `curl`ing any `/api/*` route on the deployed demo to return **500,
-      not 401** — the handler still starts with `requireOwnerForApi()`, which
-      reaches `requireEnv` and throws with no Supabase credentials present.
-      Nothing is behind it; the alternative is a demo branch inside the owner
-      gate, which is exactly what this design refuses.
-    - Not carried over from the guide, on purpose: its advice to make cron
-      routes return 200. `requireCronSecret()` already 503s when the secret is
-      unset, and that fail-closed direction is deliberate.
-
-11. **The navigation/UX pass is written but not compiled** (global constraint —
+10. **The navigation/UX pass is written but not compiled** (global constraint —
     no build or type-check was run). Run `pnpm tsc --noEmit` and `pnpm dev`,
     then look at four things:
     - **`/` in a narrow window.** Six stat cards go `2 → 3 → 6` across
@@ -186,6 +165,15 @@ wrong — not this one.
 
 ## Settled
 
+- **The demo's cron handler keeps its 503, not the 200 the guide suggests.**
+  `requireCronSecret()` already fails closed when `CRON_SECRET` is unset, and
+  that direction is deliberate (`ARCHITECTURE.md` §2). Quieter logs in a project
+  nobody reads the logs of is not worth weakening a fail-closed path for.
+- **`curl`ing `/api/*` on the deployed demo returns 500, not 401** — the handler
+  runs, reaches `requireEnv`, and throws with no Supabase credentials present.
+  This is the visible cost of refusing to put a demo branch inside
+  `requireOwnerForApi()`, and it is the right trade: nothing is behind the 500,
+  because that environment holds no data and no secret to reach.
 - **ISO-week bucketing (Mon–Sun) stays** on `/savings` and `/disbursements`,
   despite differing from the old Streamlit app's Sunday-ending pandas weeks.
 - **The Daily chart draws one segment per receipt** (`daily-receipt-bar-chart.tsx`),

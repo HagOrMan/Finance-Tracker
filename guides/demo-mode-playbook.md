@@ -4,7 +4,7 @@ A portable spec for adding a public, safe, no-login demo build to a private **Ne
 
 Hand this file to Claude Code inside a repo and ask it to implement it. It is written to be adapted, not followed blindly: sections 3 and 4 decide the shape of everything after them, and the answer differs per repo.
 
-Nothing here is specific to any one app. It was written after building this pattern once end-to-end; §16 records what actually went wrong that time, since a lesson is cheaper to read than to repeat.
+Nothing here is specific to any one app. It was written after building this pattern once end-to-end and deploying it; §16 records what actually went wrong that time, since a lesson is cheaper to read than to repeat.
 
 ---
 
