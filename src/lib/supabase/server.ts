@@ -17,8 +17,17 @@ import "server-only";
  * refresh. Without it, a request whose handlers fire several concurrent queries
  * can trigger simultaneous refresh-token redemptions against the same
  * near-expiry token, which surfaces as PostgREST rejecting the resulting access
- * token with `PGRST303: "JWT issued at future"` — a refresh race, not a clock
- * problem.
+ * token with `PGRST303: "JWT issued at future"`.
+ *
+ * The refresh race is the **trigger**, not the mechanism. PostgREST allows 30 s
+ * of skew on `iat` and rejects anything past it, so what actually fails is a
+ * token issued moments ago meeting a validator whose clock lags its signer —
+ * racing to refresh just makes brand-new tokens frequent enough to land in that
+ * window. (An earlier version of this comment said "a refresh race, *not* a
+ * clock problem", which had it backwards: the same rejection now also appears
+ * on the **data** path, which holds no session and refreshes nothing. See
+ * PROGRESS.md.) Deduplicating here still removes the trigger, which is why it
+ * stays.
  */
 export const createClient = cache(async () => {
   const cookieStore = await cookies();

@@ -74,6 +74,24 @@ function isUniqueViolation(error: PostgrestError): boolean {
 }
 
 /**
+ * Every failure in this class is raised through here, so the PostgREST error
+ * *code* survives into the message.
+ *
+ * `error.message` on its own is not enough to place a failure. A log line
+ * reading only `Failed to load disbursements: JWT issued at future` doesn't say
+ * whether the query was rejected or the *token* was — that's `PGRST303`, and
+ * the answer took a web search to establish once (diagnosis in PROGRESS.md).
+ *
+ * The code goes in the message rather than onto a field because these errors
+ * cross an `unstable_cache` boundary and get re-thrown by route handlers, and
+ * the message is the one part every layer preserves.
+ */
+function failed(action: string, error: PostgrestError): Error {
+  const code = error.code ? ` [${error.code}]` : "";
+  return new Error(`Failed to ${action}: ${error.message}${code}`);
+}
+
+/**
  * Expects the SECRET-key client from `src/lib/supabase/service.ts` — these
  * tables grant nothing to `anon`/`authenticated`, so a session-scoped client
  * gets `42501` on every call. Authorization happens before this class is
@@ -88,7 +106,7 @@ export class SupabaseDataSource implements DataSource {
       .from("receipts")
       .select(RECEIPT_COLUMNS)
       .order("date", { ascending: false });
-    if (error) throw new Error(`Failed to load receipts: ${error.message}`);
+    if (error) throw failed("load receipts", error);
     return (data as SelectedReceiptRow[]).map(toReceipt);
   }
 
@@ -98,7 +116,7 @@ export class SupabaseDataSource implements DataSource {
       .from("disbursements")
       .select(DISBURSEMENT_COLUMNS)
       .order("date_received", { ascending: false });
-    if (error) throw new Error(`Failed to load disbursements: ${error.message}`);
+    if (error) throw failed("load disbursements", error);
     return data as Disbursement[];
   }
 
@@ -125,7 +143,7 @@ export class SupabaseDataSource implements DataSource {
       })
       .select(RECEIPT_COLUMNS)
       .single();
-    if (error) throw new Error(`Failed to insert receipt: ${error.message}`);
+    if (error) throw failed("insert receipt", error);
     return toReceipt(data as SelectedReceiptRow);
   }
 
@@ -142,7 +160,7 @@ export class SupabaseDataSource implements DataSource {
       })
       .select(DISBURSEMENT_COLUMNS)
       .single();
-    if (error) throw new Error(`Failed to insert disbursement: ${error.message}`);
+    if (error) throw failed("insert disbursement", error);
     return data as Disbursement;
   }
 
@@ -178,7 +196,7 @@ export class SupabaseDataSource implements DataSource {
       .update(payload)
       .in("id", ids)
       .select(RECEIPT_COLUMNS);
-    if (error) throw new Error(`Failed to update receipts: ${error.message}`);
+    if (error) throw failed("update receipts", error);
     return (data as SelectedReceiptRow[]).map(toReceipt);
   }
 
@@ -188,7 +206,7 @@ export class SupabaseDataSource implements DataSource {
       .from("receipts")
       .select(RECEIPT_COLUMNS)
       .in("id", ids);
-    if (error) throw new Error(`Failed to load receipts: ${error.message}`);
+    if (error) throw failed("load receipts", error);
     return (data as SelectedReceiptRow[]).map(toReceipt);
   }
 
@@ -208,7 +226,7 @@ export class SupabaseDataSource implements DataSource {
           "A disbursement refunds this receipt. Delete or unlink it first.",
         );
       }
-      throw new Error(`Failed to delete receipt: ${error.message}`);
+      throw failed("delete receipt", error);
     }
     if (!data || data.length === 0) {
       throw new NotFoundError(`Receipt ${id} not found`);
@@ -222,9 +240,7 @@ export class SupabaseDataSource implements DataSource {
       .select(DISBURSEMENT_COLUMNS)
       .eq("refunded_from_receipt", id)
       .order("date_received", { ascending: false });
-    if (error) {
-      throw new Error(`Failed to load linked disbursements: ${error.message}`);
-    }
+    if (error) throw failed("load linked disbursements", error);
     return data as Disbursement[];
   }
 
@@ -259,7 +275,7 @@ export class SupabaseDataSource implements DataSource {
           "That receipt does not exist, so the refund can't be linked to it.",
         );
       }
-      throw new Error(`Failed to update disbursements: ${error.message}`);
+      throw failed("update disbursements", error);
     }
     return data as Disbursement[];
   }
@@ -270,7 +286,7 @@ export class SupabaseDataSource implements DataSource {
       .from("disbursements")
       .select(DISBURSEMENT_COLUMNS)
       .in("id", ids);
-    if (error) throw new Error(`Failed to load disbursements: ${error.message}`);
+    if (error) throw failed("load disbursements", error);
     return data as Disbursement[];
   }
 
@@ -281,9 +297,7 @@ export class SupabaseDataSource implements DataSource {
       .delete()
       .eq("id", id)
       .select("id");
-    if (error) {
-      throw new Error(`Failed to delete disbursement: ${error.message}`);
-    }
+    if (error) throw failed("delete disbursement", error);
     if (!data || data.length === 0) {
       throw new NotFoundError(`Disbursement ${id} not found`);
     }
@@ -300,7 +314,7 @@ export class SupabaseDataSource implements DataSource {
       .select(SUBSCRIPTION_COLUMNS)
       .order("active", { ascending: false })
       .order("name", { ascending: true });
-    if (error) throw new Error(`Failed to load subscriptions: ${error.message}`);
+    if (error) throw failed("load subscriptions", error);
     return data as Subscription[];
   }
 
@@ -323,9 +337,7 @@ export class SupabaseDataSource implements DataSource {
       })
       .select(SUBSCRIPTION_COLUMNS)
       .single();
-    if (error) {
-      throw new Error(`Failed to insert subscription: ${error.message}`);
-    }
+    if (error) throw failed("insert subscription", error);
     return data as Subscription;
   }
 
@@ -344,9 +356,7 @@ export class SupabaseDataSource implements DataSource {
       .update(payload)
       .eq("id", id)
       .select(SUBSCRIPTION_COLUMNS);
-    if (error) {
-      throw new Error(`Failed to update subscription: ${error.message}`);
-    }
+    if (error) throw failed("update subscription", error);
     const row = (data as Subscription[])[0];
     if (!row) throw new NotFoundError(`Subscription ${id} not found`);
     return row;
@@ -358,7 +368,7 @@ export class SupabaseDataSource implements DataSource {
       .from("subscriptions")
       .select(SUBSCRIPTION_COLUMNS)
       .eq("id", id);
-    if (error) throw new Error(`Failed to load subscription: ${error.message}`);
+    if (error) throw failed("load subscription", error);
     const row = (data as Subscription[])[0];
     if (!row) throw new NotFoundError(`Subscription ${id} not found`);
     return row;
@@ -380,7 +390,7 @@ export class SupabaseDataSource implements DataSource {
           "This subscription has generated receipts. Pause it instead, or delete those receipts first.",
         );
       }
-      throw new Error(`Failed to delete subscription: ${error.message}`);
+      throw failed("delete subscription", error);
     }
     if (!data || data.length === 0) {
       throw new NotFoundError(`Subscription ${id} not found`);
@@ -394,9 +404,7 @@ export class SupabaseDataSource implements DataSource {
       .select(RECEIPT_COLUMNS)
       .eq("subscription_id", id)
       .order("date", { ascending: false });
-    if (error) {
-      throw new Error(`Failed to load generated receipts: ${error.message}`);
-    }
+    if (error) throw failed("load generated receipts", error);
     return (data as SelectedReceiptRow[]).map(toReceipt);
   }
 
@@ -434,7 +442,7 @@ export class SupabaseDataSource implements DataSource {
           `Charge for subscription ${subscription.id} on ${date} already exists`,
         );
       }
-      throw new Error(`Failed to insert subscription charge: ${error.message}`);
+      throw failed("insert subscription charge", error);
     }
     return toReceipt(data as SelectedReceiptRow);
   }
@@ -445,8 +453,6 @@ export class SupabaseDataSource implements DataSource {
       .from("subscriptions")
       .update({ charges_generated: count })
       .eq("id", id);
-    if (error) {
-      throw new Error(`Failed to advance charge counter: ${error.message}`);
-    }
+    if (error) throw failed("advance charge counter", error);
   }
 }

@@ -38,7 +38,8 @@ const AUTH_COOKIE_RE = /^sb-.+-auth-token(\.\d+)?$/;
  * near-expiry session (a page load plus a client component's own fetch) can
  * each redeem the same refresh token at once. One redemption wins; the loser
  * ends up with a mismatched access/refresh pair, which PostgREST rejects as
- * `PGRST303: "JWT issued at future"`. Same class of bug that server.ts's
+ * `PGRST303: "JWT issued at future"` — see `server.ts` for why it is the
+ * *newest* token that gets rejected. Same class of bug that server.ts's
  * cache() fixes within a request, one layer up across requests.
  *
  * Only the first request for a given cookie snapshot calls Supabase;

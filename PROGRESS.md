@@ -218,6 +218,36 @@ wrong — not this one.
 
 ## Known non-issues
 
+- **`JWT issued at future` on a *data* read is Supabase-internal clock skew.**
+  Seen **2026-08-10** in dev, thrown by `loadDisbursements()` during a
+  background `unstable_cache` revalidation while the request itself served 200.
+  Diagnosed and closed as external:
+  - That path runs on the **secret key**, not a session — `getDataSource()` →
+    `createServiceClient()`. There is no refresh token and no rotation, so the
+    refresh-race explanation written in `supabase/server.ts` and
+    `supabase/middleware.ts` cannot be the cause here. (Those mitigations are
+    still right; the sentence "a refresh race, **not a clock problem**" is the
+    part that's wrong — both paths are ultimately a freshly-issued token
+    reaching a validator whose clock lags the signer.)
+  - This project uses the **new opaque keys** (`sb_secret_…` /
+    `sb_publishable_…`). Kong swaps those for a gateway-signed ES256 JWT before
+    PostgREST sees them, so *every* request now carries a gateway-issued token —
+    which is why this can now appear on the data path and not just at login.
+  - PostgREST allows **30 s** of skew on `iat` and rejects anything beyond it.
+    Nothing in this repo mints that token, and the dev machine measured **0 s**
+    against the Supabase edge, so the skew is between Supabase's own gateway and
+    its PostgREST instance. Transient; not actionable from here.
+  - **Three follow-ups, all done.** Every throw in `supabase-source.ts` now goes
+    through `failed()`, which appends the `PGRST…` code — that was the missing
+    half of the log line. `cache.ts` retries once, reads only, on a message
+    matching `issued at future`; it is a *fresh draw* at a possibly-unskewed
+    instance, not a wait, since the retry gets a newly minted token with a new
+    `iat`. And the "a refresh race, **not** a clock problem" sentence in
+    `supabase/server.ts` was amended — the race is the trigger, the skew is the
+    mechanism, and the mitigations there and in `middleware.ts` are unchanged.
+  - Still true after all that: if *every* instance behind the gateway is skewed,
+    a foreground read on a cold cache 500s the route. This one was harmlessly
+    swallowed by background revalidation.
 - **Gmail's message-list column shows the bare sender address** rather than
   "Finance Tracker", even with the address in Contacts and the name rendering
   correctly in the opened message. The `From` header is right; Gmail resolves
