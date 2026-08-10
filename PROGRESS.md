@@ -165,6 +165,23 @@ wrong — not this one.
 
 ## Settled
 
+- **A Popover rendered inside a Dialog or Drawer must set `modal`.** The
+  surrounding overlay holds a `react-remove-scroll` lock, and only the *topmost*
+  lock on that library's stack handles wheel and touch events. A popover portals
+  to `<body>` — outside the lock — so without one of its own, every wheel tick
+  and every touch drag over its content is cancelled; only dragging the
+  scrollbar works, which makes it look like a styling bug. This is why
+  `receipt-link-combobox.tsx` sets `modal`. `multi-select.tsx` and `nav.tsx`
+  don't need it: neither sits inside an overlay.
+- **The "Refund of receipt" picker filters itself** (`shouldFilter={false}`)
+  rather than letting cmdk do it. cmdk keeps every receipt mounted and re-scores
+  the lot per keystroke, and the surviving list stayed tall enough to hold a
+  stale `scrollTop`, so the best match sat off-screen above you. It now does a
+  token-AND substring match over date/store/category, keeps the API's
+  newest-first order, caps the rendered list at 50 (with a row saying so), and
+  resets `scrollTop` by hand on every query change. Both call sites —
+  `quick-add-modal.tsx` and `disbursement-editor.tsx` — share the one component
+  now; they had drifted apart on popover width already.
 - **The demo's cron handler keeps its 503, not the 200 the guide suggests.**
   `requireCronSecret()` already fails closed when `CRON_SECRET` is unset, and
   that direction is deliberate (`ARCHITECTURE.md` §2). Quieter logs in a project

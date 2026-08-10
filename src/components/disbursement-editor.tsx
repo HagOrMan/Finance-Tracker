@@ -3,19 +3,10 @@
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, ChevronsUpDown, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -33,12 +24,8 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { AutocompleteInput } from "@/components/autocomplete-input";
+import { ReceiptLinkCombobox } from "@/components/receipt-link-combobox";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   useDeleteDisbursement,
@@ -148,7 +135,6 @@ function DisbursementEditorForm({
   const { data: disbursements } = useDisbursements();
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [comboOpen, setComboOpen] = useState(false);
 
   // Canonical spellings only, same as quick-add — accepting a suggestion can
   // then only reduce entity drift, never add a variant back.
@@ -180,7 +166,6 @@ function DisbursementEditorForm({
 
   const entity = watch("entity") ?? "";
   const refundedFromReceipt = watch("refunded_from_receipt");
-  const linkedReceipt = receipts?.find((r) => r.id === refundedFromReceipt);
 
   async function onSubmit(values: UpdateDisbursementFormValues) {
     try {
@@ -273,83 +258,13 @@ function DisbursementEditorForm({
 
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label>Refund of receipt (optional)</Label>
-        <Popover open={comboOpen} onOpenChange={setComboOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              role="combobox"
-              title={
-                linkedReceipt
-                  ? `${linkedReceipt.date} · ${linkedReceipt.store} · $${linkedReceipt.price.toFixed(2)}`
-                  : "Not linked to a receipt"
-              }
-              className="w-full justify-between font-normal"
-            >
-              <span className="min-w-0 truncate">
-                {linkedReceipt
-                  ? `${linkedReceipt.date} · ${linkedReceipt.store} · $${linkedReceipt.price.toFixed(2)}`
-                  : "Not linked to a receipt"}
-              </span>
-              <ChevronsUpDown className="opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[320px] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Search receipts…" />
-              <CommandList>
-                <CommandEmpty>No receipts found.</CommandEmpty>
-                <CommandGroup>
-                  <CommandItem
-                    onSelect={() => {
-                      setValue("refunded_from_receipt", null, {
-                        shouldValidate: true,
-                      });
-                      setComboOpen(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 size-4",
-                        refundedFromReceipt == null
-                          ? "opacity-100"
-                          : "opacity-0",
-                      )}
-                    />
-                    Not linked
-                  </CommandItem>
-                  {(receipts ?? []).map((r) => (
-                    <CommandItem
-                      key={r.id}
-                      value={`${r.date} ${r.store} ${r.category} ${r.id}`}
-                      onSelect={() => {
-                        setValue("refunded_from_receipt", r.id, {
-                          shouldValidate: true,
-                        });
-                        setComboOpen(false);
-                      }}
-                    >
-                      <Check
-                        className={cn(
-                          "mr-2 size-4",
-                          refundedFromReceipt === r.id
-                            ? "opacity-100"
-                            : "opacity-0",
-                        )}
-                      />
-                      <span
-                        className="min-w-0 truncate"
-                        title={`${r.date} · ${r.store} · $${r.price.toFixed(2)}`}
-                      >
-                        {r.date} · {r.store} · ${r.price.toFixed(2)}
-                      </span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+        <ReceiptLinkCombobox
+          receipts={receipts}
+          value={refundedFromReceipt}
+          onChange={(id) =>
+            setValue("refunded_from_receipt", id, { shouldValidate: true })
+          }
+        />
       </div>
 
       {(wasRefund || refundedFromReceipt != null) && (
