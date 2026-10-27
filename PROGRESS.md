@@ -170,14 +170,14 @@ wrong — not this one.
       preference is a literal empty note instead.
 11. **Drawer keyboard fix — written, not yet seen on a phone.** On iOS (Safari
     and the installed app) the keyboard covered the bottom of any drawer, so
-    low fields (Discount, Note, Reason) couldn't be scrolled above it. vaul's
-    `repositionInputs` is now off and `DrawerContent` in
-    `src/components/ui/drawer.tsx` lifts the sheet by the keyboard's height
-    from `visualViewport` and scrolls the focused field into view. Check by
-    tapping Discount *first* in the + sheet. If the sheet still doesn't move,
-    `visualViewport` isn't reporting the keyboard on that iOS version; the
-    agreed fallback is extra bottom padding in `DrawerBody` while a field is
-    focused, with no measuring.
+    low fields (Discount, Note, Reason) couldn't be scrolled above it.
+    `DrawerBody` now gets `50svh` of bottom padding while an input or textarea
+    inside it has focus, so the scroll range always reaches past the keyboard.
+    The sheet itself doesn't move. Lifting the sheet by a
+    `visualViewport`-measured keyboard height overshot for low fields and
+    undershot for high ones on a real iPhone, and was reverted. Check: tap Note
+    *first* in the + sheet, then scroll — Note and the Add button should both
+    be reachable above the keyboard, and the top of the form too.
 
 ## Settled
 
