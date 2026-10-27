@@ -135,7 +135,8 @@ function revealFocusedField(body: HTMLElement, target: EventTarget) {
  * fix**, and it deliberately measures nothing. On iOS the keyboard covers the
  * bottom of the sheet without moving it, so the last ~keyboard-height of the
  * form could never be scrolled above it. The padding extends the scroll range
- * by more than a keyboard's height. Don't swap it for lifting the sheet by a
+ * by about a keyboard's height — much less and the lowest fields stop clearing
+ * it. Don't swap it for lifting the sheet by a
  * `visualViewport`-measured keyboard height: on iOS that overshoots for low
  * fields and undershoots for high ones.
  *
@@ -162,7 +163,7 @@ function DrawerBody({
         "pb-[max(1.5rem,env(safe-area-inset-bottom))]",
         // Checkboxes match too; a moment of extra padding while one has focus
         // is harmless, and listing every keyboard-raising input type isn't.
-        "has-[:is(input,textarea):focus]:pb-[50svh]",
+        "has-[:is(input,textarea):focus]:pb-[40svh]",
         className,
       )}
       {...props}

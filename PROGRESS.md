@@ -168,21 +168,20 @@ wrong — not this one.
       *without* a note still falls back to its name, since a generated row with
       an empty note reads as anonymous in the receipts table. Say so if the
       preference is a literal empty note instead.
-11. **Drawer keyboard fix — written, not yet seen on a phone.** On iOS (Safari
-    and the installed app) the keyboard covered the bottom of any drawer, so
-    low fields (Discount, Note, Reason) couldn't be scrolled above it.
-    `DrawerBody` now gets `50svh` of bottom padding while an input or textarea
-    inside it has focus, so the scroll range always reaches past the keyboard,
-    and a focused field in the lower 60% of the body is scrolled up to its top
-    (`revealFocusedField`). The sheet itself doesn't move. The extra space is
-    confirmed working on a phone; the auto-scroll is not yet. Lifting the sheet by a
-    `visualViewport`-measured keyboard height overshot for low fields and
-    undershot for high ones on a real iPhone, and was reverted. Check: tap Note
-    *first* in the + sheet — it should land near the top of the sheet without
-    scrolling by hand. `REVEAL_BELOW_FRACTION` and `REVEAL_TOP_GAP_PX` in
-    `drawer.tsx` are the knobs.
 
 ## Settled
+
+- **The iOS keyboard covers the bottom of a drawer, and `DrawerBody` works
+  around it without measuring anything.** Confirmed working on an iPhone, in
+  Safari and the installed app. While an input or textarea inside it has focus,
+  the body gets `40svh` of extra bottom padding so the scroll range reaches past
+  the keyboard, and a focused field in the lower 60% of the body is scrolled up
+  near its top (`revealFocusedField`). The sheet itself never moves. Lifting the
+  sheet by a `visualViewport`-measured keyboard height was tried on a real
+  iPhone and overshot for low fields and undershot for high ones — don't go back
+  to it. The padding, `REVEAL_BELOW_FRACTION` and `REVEAL_TOP_GAP_PX` in
+  `src/components/ui/drawer.tsx` are the knobs; if the padding goes much below
+  the keyboard's height (~40% of the screen), the lowest fields stop clearing it.
 
 - **A Popover rendered inside a Dialog or Drawer must set `modal`.** The
   surrounding overlay holds a `react-remove-scroll` lock, and only the *topmost*
