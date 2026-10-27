@@ -172,12 +172,15 @@ wrong — not this one.
     and the installed app) the keyboard covered the bottom of any drawer, so
     low fields (Discount, Note, Reason) couldn't be scrolled above it.
     `DrawerBody` now gets `50svh` of bottom padding while an input or textarea
-    inside it has focus, so the scroll range always reaches past the keyboard.
-    The sheet itself doesn't move. Lifting the sheet by a
+    inside it has focus, so the scroll range always reaches past the keyboard,
+    and a focused field in the lower 60% of the body is scrolled up to its top
+    (`revealFocusedField`). The sheet itself doesn't move. The extra space is
+    confirmed working on a phone; the auto-scroll is not yet. Lifting the sheet by a
     `visualViewport`-measured keyboard height overshot for low fields and
     undershot for high ones on a real iPhone, and was reverted. Check: tap Note
-    *first* in the + sheet, then scroll — Note and the Add button should both
-    be reachable above the keyboard, and the top of the form too.
+    *first* in the + sheet — it should land near the top of the sheet without
+    scrolling by hand. `REVEAL_BELOW_FRACTION` and `REVEAL_TOP_GAP_PX` in
+    `drawer.tsx` are the knobs.
 
 ## Settled
 

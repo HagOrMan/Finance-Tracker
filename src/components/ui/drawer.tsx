@@ -85,6 +85,39 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 /**
+ * Fields whose bottom edge is below this fraction of the body's height get
+ * moved up. The keyboard covers roughly the bottom 40% of the screen, and the
+ * body ends at the bottom of the screen, so its upper part stays visible.
+ */
+const REVEAL_BELOW_FRACTION = 0.4;
+
+/** Room left above the field, so its label stays visible too. */
+const REVEAL_TOP_GAP_PX = 32;
+
+/**
+ * Scrolls `body` itself — never `scrollIntoView`, which also scrolls the page
+ * behind the overlay and makes iOS pan the viewport.
+ *
+ * Waits a frame so the focus padding above has been applied; without it there
+ * may be no scroll range yet and the browser clamps the move to nothing.
+ */
+function revealFocusedField(body: HTMLElement, target: EventTarget) {
+  if (
+    !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)
+  ) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    const bodyRect = body.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    if (rect.bottom <= bodyRect.top + bodyRect.height * REVEAL_BELOW_FRACTION) {
+      return;
+    }
+    body.scrollTop += rect.top - bodyRect.top - REVEAL_TOP_GAP_PX;
+  });
+}
+
+/**
  * The scrollable middle of a drawer. **Any content taller than the sheet must
  * be wrapped in this**, not in a plain `<div>`.
  *
@@ -105,11 +138,22 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
  * by more than a keyboard's height. Don't swap it for lifting the sheet by a
  * `visualViewport`-measured keyboard height: on iOS that overshoots for low
  * fields and undershoots for high ones.
+ *
+ * The padding only makes room; `revealFocusedField` uses it, moving a low
+ * field up to the top of the body — the part the keyboard never covers.
  */
-function DrawerBody({ className, ...props }: React.ComponentProps<"div">) {
+function DrawerBody({
+  className,
+  onFocus,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="drawer-body"
+      onFocus={(event) => {
+        onFocus?.(event);
+        revealFocusedField(event.currentTarget, event.target);
+      }}
       className={cn(
         // `min-h-0` is load-bearing: a flex item defaults to `min-height: auto`,
         // which refuses to shrink below its content, so `flex-1 overflow-y-auto`
