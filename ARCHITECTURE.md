@@ -282,6 +282,25 @@ implementation.
   demo source's copy must agree, and `src/lib/demo/seed.ts` seeds the same way
   so the demo's history matches what a run would write.
 
+### Quick adds (`/quick-adds`)
+
+- **A preset is a template, not a spend record.** Picking one in the quick-add
+  sheet only fills the form; the row written is an ordinary receipt or
+  disbursement with **no link back** to the preset. That is why deleting a
+  preset has no guard, and why nothing outside the sheet and `/quick-adds`
+  reads the table.
+- **The date is never part of a preset**, and picking one never submits. A
+  mis-tap costs nothing, and a one-off change to the amount stays possible.
+- **One table for both kinds.** `counterparty` is the receipt's `store` or the
+  disbursement's `entity`; `note` is its `note` or `reason`. `category` must be
+  set for a receipt preset and null for a disbursement one — a DB check
+  constraint, mirrored by `quickAddSchema`'s refine/transform.
+- **`amount` null means "type it each time"**: the sheet focuses the amount
+  field instead of filling it.
+- **Edits are a full replacement (`PUT`), not a `PATCH`.** The kind/category
+  rule is cross-field, and a partial patch could only check it by reading the
+  row first.
+
 ### Reports (`/reports`)
 
 - **One window rule: the N days ending yesterday**, N = 7/30/365. Run on a
@@ -546,6 +565,7 @@ Each of these was decided, not overlooked.
 | Optimistic UI updates | On a personal ledger, a wrong number that silently reverts is worse than a 200 ms wait |
 | Store→category defaults table | Derived from history instead (§1) |
 | Subscriptions under `DATA_SOURCE=sqlite` | Dev-only mode, no such table |
+| Quick adds under `DATA_SOURCE=sqlite` | Same reason |
 | Subscription price-change schedule | Build when a "your price rises on `<date>`" email needs recording in advance. Until then edit the price; past receipts keep the old amount because they are facts |
 | Custom date ranges on `/reports` | An arbitrary range has no natural baseline windows, which is most of the feature. `/daily` and `/monthly` answer those questions |
 | Scheduled yearly report emails | The on-demand button covers it. The monthly digest *is* scheduled — as a branch of the same daily cron, not a second slot |

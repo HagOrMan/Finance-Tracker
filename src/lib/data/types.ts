@@ -165,6 +165,43 @@ export type UpdateSubscriptionInput = Partial<
   >
 >;
 
+// ---------------------------------------------------------------------------
+// Quick adds
+//
+// A preset that pre-fills the quick-add form. Like a subscription it is a
+// template, not a spend record: nothing reads it except that form, and the row
+// it produces carries no link back to it.
+// ---------------------------------------------------------------------------
+
+export const QUICK_ADD_KINDS = ["receipt", "disbursement"] as const;
+export type QuickAddKind = (typeof QUICK_ADD_KINDS)[number];
+
+export interface QuickAdd {
+  id: number;
+  kind: QuickAddKind;
+  /** Chip label in the quick-add sheet. Never written onto the row. */
+  name: string;
+  /** The receipt's `store`, or the disbursement's `entity`. */
+  counterparty: string;
+  /** Receipts only — always null on a disbursement preset (DB check constraint). */
+  category: string | null;
+  /** Null means "type it each time". */
+  amount: number | null;
+  /** The receipt's `note`, or the disbursement's `reason`. */
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuickAddInput {
+  kind: QuickAddKind;
+  name: string;
+  counterparty: string;
+  category: string | null;
+  amount: number | null;
+  note: string | null;
+}
+
 export interface DataSource {
   loadReceipts(): Promise<Receipt[]>;
   loadDisbursements(): Promise<Disbursement[]>;
@@ -230,4 +267,17 @@ export interface DataSource {
    * user-facing patch type would let a form desync the schedule.
    */
   setChargesGenerated(id: number, count: number): Promise<void>;
+
+  // -------------------------------------------------------------------------
+  // Quick adds. Unsupported by `SqliteDataSource`, for the same reason as
+  // subscriptions. An update replaces the whole preset — see `quickAddSchema`.
+  // -------------------------------------------------------------------------
+
+  /** Alphabetical by name. */
+  loadQuickAdds(): Promise<QuickAdd[]>;
+  insertQuickAdd(input: QuickAddInput): Promise<QuickAdd>;
+  /** Throws `NotFoundError` when no row has that id. */
+  updateQuickAdd(id: number, input: QuickAddInput): Promise<QuickAdd>;
+  /** Throws `NotFoundError` when no row has that id. */
+  deleteQuickAdd(id: number): Promise<void>;
 }

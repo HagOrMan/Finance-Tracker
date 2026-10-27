@@ -25,6 +25,7 @@ import { APP_TIMEZONE } from "@/lib/config";
 import type {
   Disbursement,
   IntervalUnit,
+  QuickAdd,
   Receipt,
   Subscription,
 } from "@/lib/data/types";
@@ -343,6 +344,41 @@ const SUBSCRIPTION_TEMPLATES: readonly {
   },
 ];
 
+/**
+ * Static: a preset has no history to be consistent with. One of each shape the
+ * quick-add sheet handles — a fixed-amount receipt, a blank-amount receipt, and
+ * a disbursement.
+ */
+const QUICK_ADD_TEMPLATES: readonly Omit<
+  QuickAdd,
+  "id" | "created_at" | "updated_at"
+>[] = [
+  {
+    kind: "receipt",
+    name: "Usual latte",
+    counterparty: "Third Cup Coffee",
+    category: "Eating Out (Stressed)",
+    amount: 5.25,
+    note: "Oat latte",
+  },
+  {
+    kind: "receipt",
+    name: "Gym drop-in",
+    counterparty: "Ironhouse Gym",
+    category: "Health",
+    amount: null,
+    note: null,
+  },
+  {
+    kind: "disbursement",
+    name: "Utilities split",
+    counterparty: "Sam Okafor",
+    category: null,
+    amount: 42.5,
+    note: "Half of the hydro bill",
+  },
+];
+
 const INCOME_SOURCES: readonly {
   entity: string;
   amount: readonly [number, number];
@@ -603,14 +639,23 @@ export function generateSeed(): DemoSeed {
     });
   }
 
+  const quickAdds: QuickAdd[] = QUICK_ADD_TEMPLATES.map((template, index) => ({
+    ...template,
+    id: index + 1,
+    created_at: stampFor(today),
+    updated_at: stampFor(today),
+  }));
+
   return {
     receipts,
     disbursements,
     subscriptions,
+    quickAdds,
     nextId: {
       receipts: receipts.length + 1,
       disbursements: disbursementId,
       subscriptions: subscriptions.length + 1,
+      quickAdds: quickAdds.length + 1,
     },
   };
 }

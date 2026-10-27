@@ -47,6 +47,7 @@ const MANAGE_LINKS = [
   { href: "/stores", label: "Stores & entities" },
   { href: "/manage", label: "Receipts & disbursements" },
   { href: "/subscriptions", label: "Subscriptions" },
+  { href: "/quick-adds", label: "Quick adds" },
 ];
 
 /**

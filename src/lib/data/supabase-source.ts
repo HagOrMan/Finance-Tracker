@@ -9,6 +9,8 @@ import type {
   NewReceiptInput,
   NewDisbursementInput,
   NewSubscriptionInput,
+  QuickAdd,
+  QuickAddInput,
   Subscription,
   UpdateReceiptInput,
   UpdateDisbursementInput,
@@ -34,6 +36,8 @@ const DISBURSEMENT_COLUMNS =
   "id, entity, amount, date_received, reason, refunded_from_receipt, updated_at";
 const SUBSCRIPTION_COLUMNS =
   "id, name, store, category, price, interval_unit, interval_count, start_date, charges_generated, active, note, created_at, updated_at";
+const QUICK_ADD_COLUMNS =
+  "id, kind, name, counterparty, category, amount, note, created_at, updated_at";
 
 type SelectedReceiptRow = Receipt;
 
@@ -454,5 +458,56 @@ export class SupabaseDataSource implements DataSource {
       .update({ charges_generated: count })
       .eq("id", id);
     if (error) throw failed("advance charge counter", error);
+  }
+
+  // -------------------------------------------------------------------------
+  // Quick adds
+  // -------------------------------------------------------------------------
+
+  async loadQuickAdds(): Promise<QuickAdd[]> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("quick_adds")
+      .select(QUICK_ADD_COLUMNS)
+      .order("name", { ascending: true });
+    if (error) throw failed("load quick adds", error);
+    return data as QuickAdd[];
+  }
+
+  async insertQuickAdd(input: QuickAddInput): Promise<QuickAdd> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("quick_adds")
+      .insert(input)
+      .select(QUICK_ADD_COLUMNS)
+      .single();
+    if (error) throw failed("insert quick add", error);
+    return data as QuickAdd;
+  }
+
+  async updateQuickAdd(id: number, input: QuickAddInput): Promise<QuickAdd> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("quick_adds")
+      .update(input)
+      .eq("id", id)
+      .select(QUICK_ADD_COLUMNS);
+    if (error) throw failed("update quick add", error);
+    const row = (data as QuickAdd[])[0];
+    if (!row) throw new NotFoundError(`Quick add ${id} not found`);
+    return row;
+  }
+
+  async deleteQuickAdd(id: number): Promise<void> {
+    const { data, error } = await this.supabase
+      .schema(SCHEMA)
+      .from("quick_adds")
+      .delete()
+      .eq("id", id)
+      .select("id");
+    if (error) throw failed("delete quick add", error);
+    if (!data || data.length === 0) {
+      throw new NotFoundError(`Quick add ${id} not found`);
+    }
   }
 }

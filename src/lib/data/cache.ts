@@ -36,6 +36,7 @@ import { getDataSource } from "./source";
 import type {
   Disbursement,
   MergedReceipt,
+  QuickAdd,
   Receipt,
   Subscription,
 } from "./types";
@@ -43,6 +44,7 @@ import type {
 export const RECEIPTS_TAG = "finance:receipts";
 export const DISBURSEMENTS_TAG = "finance:disbursements";
 export const SUBSCRIPTIONS_TAG = "finance:subscriptions";
+export const QUICK_ADDS_TAG = "finance:quick-adds";
 
 /**
  * Backstop only — correctness comes from the tags, not from expiry.
@@ -124,6 +126,8 @@ const readDisbursements = () =>
   retryOnClockSkew(async () => (await getDataSource()).loadDisbursements());
 const readSubscriptions = () =>
   retryOnClockSkew(async () => (await getDataSource()).loadSubscriptions());
+const readQuickAdds = () =>
+  retryOnClockSkew(async () => (await getDataSource()).loadQuickAdds());
 
 const cachedReceipts = unstable_cache(readReceipts, ["finance", "receipts"], {
   tags: [RECEIPTS_TAG],
@@ -140,6 +144,12 @@ const cachedSubscriptions = unstable_cache(
   readSubscriptions,
   ["finance", "subscriptions"],
   { tags: [SUBSCRIPTIONS_TAG], revalidate: CACHE_TTL_SECONDS },
+);
+
+const cachedQuickAdds = unstable_cache(
+  readQuickAdds,
+  ["finance", "quick-adds"],
+  { tags: [QUICK_ADDS_TAG], revalidate: CACHE_TTL_SECONDS },
 );
 
 export async function loadReceiptsCached({
@@ -166,6 +176,15 @@ export async function loadSubscriptionsCached({
   if (!fresh) return cachedSubscriptions();
   const rows = await readSubscriptions();
   invalidateSubscriptions();
+  return rows;
+}
+
+export async function loadQuickAddsCached({
+  fresh = false,
+}: FreshOption = {}): Promise<QuickAdd[]> {
+  if (!fresh) return cachedQuickAdds();
+  const rows = await readQuickAdds();
+  invalidateQuickAdds();
   return rows;
 }
 
@@ -230,6 +249,10 @@ export function invalidateDisbursements(): void {
 
 export function invalidateSubscriptions(): void {
   revalidateTag(SUBSCRIPTIONS_TAG, EXPIRE_NOW);
+}
+
+export function invalidateQuickAdds(): void {
+  revalidateTag(QUICK_ADDS_TAG, EXPIRE_NOW);
 }
 
 /** A subscription charge writes a receipt and advances the counter on the sub. */

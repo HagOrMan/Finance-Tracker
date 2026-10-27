@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
@@ -37,6 +38,7 @@ import {
   useAddReceipt,
   useDisbursements,
   useMergedReceipts,
+  useQuickAdds,
 } from "@/hooks/use-finance-data";
 import {
   newDisbursementSchema,
@@ -46,6 +48,7 @@ import {
   type NewReceiptFormInput,
   type NewReceiptFormValues,
 } from "@/lib/data/schemas";
+import type { QuickAdd, QuickAddKind } from "@/lib/data/types";
 import { todayISO } from "@/lib/filters";
 import { nameGroupKey } from "@/lib/name-groups";
 import { buildStoreGroups } from "@/lib/stores";
@@ -155,6 +158,61 @@ function BulkAddToggle({
   );
 }
 
+/**
+ * The saved presets for one tab, as a sideways-scrolling row of buttons.
+ *
+ * Picking one only fills the form — the date is left alone and nothing is
+ * written until Add is pressed, so a mis-tap costs nothing and a one-off
+ * change to the amount is still possible.
+ */
+function PresetChips({
+  kind,
+  selectedId,
+  onPick,
+  onManage,
+}: {
+  kind: QuickAddKind;
+  selectedId: number | null;
+  onPick: (quickAdd: QuickAdd) => void;
+  onManage: () => void;
+}) {
+  const { data } = useQuickAdds();
+  const presets = useMemo(
+    () => (data ?? []).filter((q) => q.kind === kind),
+    [data, kind],
+  );
+
+  return (
+    // `min-w-0` lets the row scroll inside the sheet rather than widening it.
+    <div className="-mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1">
+      {presets.map((q) => (
+        <Button
+          key={q.id}
+          type="button"
+          size="sm"
+          variant={selectedId === q.id ? "default" : "outline"}
+          className="shrink-0"
+          onClick={() => onPick(q)}
+        >
+          {q.name}
+        </Button>
+      ))}
+      {/* The sheet lives in the app chrome and survives navigation, so the
+          link has to close it by hand. */}
+      <Button
+        asChild
+        size="sm"
+        variant="ghost"
+        className="shrink-0 text-muted-foreground"
+      >
+        <Link href="/quick-adds" onClick={onManage}>
+          {presets.length > 0 ? "Manage" : "Set up quick adds"}
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
 function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
   const addReceipt = useAddReceipt();
   const { data: receipts } = useMergedReceipts();
@@ -179,12 +237,14 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
   // category is written with `setValue`, which doesn't mark a field touched.
   const [categoryTouched, setCategoryTouched] = useState(false);
   const [autofilled, setAutofilled] = useState<string | null>(null);
+  const [presetId, setPresetId] = useState<number | null>(null);
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
+    setFocus,
     formState: { errors },
     reset,
   } = useForm<NewReceiptFormInput, unknown, NewReceiptFormValues>({
@@ -232,6 +292,31 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
     setAutofilled(group.dominantCategory);
   }
 
+  /**
+   * Overwrites every field the preset owns, including the discounts it doesn't
+   * have — a bulk session can leave the previous receipt's discount behind.
+   * The date is the one field left alone.
+   */
+  function applyPreset(q: QuickAdd) {
+    setPresetId(q.id);
+    setValue("store", q.counterparty, { shouldValidate: true });
+    setValue("category", q.category ?? "", { shouldValidate: true });
+    setValue("discount", 0);
+    setValue("discount_percentage", 0);
+    setValue("note", q.note ?? "");
+    // A deliberate choice, so history-based autofill must not override it.
+    setCategoryTouched(true);
+    setAutofilled(null);
+    if (q.amount === null) {
+      // Not validated yet: a blank price would show "must be greater than 0"
+      // before there was any chance to type one.
+      setValue("price", "");
+      setFocus("price");
+    } else {
+      setValue("price", q.amount, { shouldValidate: true });
+    }
+  }
+
   const categoryHint =
     autofilled && category === autofilled
       ? `Filled from history — ${knownStore?.displayName ?? "this store"} is usually ${autofilled}.`
@@ -259,6 +344,7 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
       });
       setCategoryTouched(false);
       setAutofilled(null);
+      setPresetId(null);
       onDone();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add receipt");
@@ -267,6 +353,13 @@ function ReceiptForm({ onDone, bulk, onBulkChange }: FormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
+      <PresetChips
+        kind="receipt"
+        selectedId={presetId}
+        onPick={applyPreset}
+        onManage={onDone}
+      />
+
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="r-store">Store</Label>
         <AutocompleteInput
@@ -373,11 +466,14 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
     [disbursements],
   );
 
+  const [presetId, setPresetId] = useState<number | null>(null);
+
   const {
     register,
     handleSubmit,
     watch,
     setValue,
+    setFocus,
     formState: { errors },
     reset,
   } = useForm<NewDisbursementFormInput, unknown, NewDisbursementFormValues>({
@@ -394,6 +490,19 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
   const entity = watch("entity");
   const refundedFromReceipt = watch("refunded_from_receipt");
 
+  /** Same contract as the receipt tab's: fills everything but the date. */
+  function applyPreset(q: QuickAdd) {
+    setPresetId(q.id);
+    setValue("entity", q.counterparty, { shouldValidate: true });
+    setValue("reason", q.note ?? "");
+    if (q.amount === null) {
+      setValue("amount", "");
+      setFocus("amount");
+    } else {
+      setValue("amount", q.amount, { shouldValidate: true });
+    }
+  }
+
   async function onSubmit(values: NewDisbursementFormValues) {
     try {
       await addDisbursement.mutateAsync(values);
@@ -406,6 +515,7 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
         reason: "",
         refunded_from_receipt: null,
       });
+      setPresetId(null);
       onDone();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add disbursement");
@@ -414,6 +524,13 @@ function DisbursementForm({ onDone, bulk, onBulkChange }: FormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-4 flex flex-col gap-3">
+      <PresetChips
+        kind="disbursement"
+        selectedId={presetId}
+        onPick={applyPreset}
+        onManage={onDone}
+      />
+
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor="d-entity">Entity</Label>
         <AutocompleteInput

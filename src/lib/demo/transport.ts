@@ -39,6 +39,7 @@ import {
   newDisbursementSchema,
   newReceiptSchema,
   newSubscriptionSchema,
+  quickAddSchema,
   updateDisbursementSchema,
   updateReceiptSchema,
   updateSubscriptionSchema,
@@ -403,6 +404,38 @@ async function route(
     }
     if (second !== undefined && second !== "run-due" && id === null) {
       return badRequest("Invalid subscription id");
+    }
+  }
+
+  // --- Quick adds ----------------------------------------------------------
+  if (collection === "quick-adds") {
+    if (second === undefined) {
+      if (method === "GET") return json(await source.loadQuickAdds());
+      if (method === "POST") {
+        const parsed = quickAddSchema.safeParse(body);
+        if (!parsed.success) {
+          return badRequest(parsed.error.issues[0]?.message ?? "Invalid input");
+        }
+        return json(await source.insertQuickAdd(parsed.data), 201);
+      }
+    }
+
+    const id = parseId(second);
+    if (id !== null) {
+      if (method === "PUT") {
+        const parsed = quickAddSchema.safeParse(body);
+        if (!parsed.success) {
+          return badRequest(parsed.error.issues[0]?.message ?? "Invalid input");
+        }
+        return json(await source.updateQuickAdd(id, parsed.data));
+      }
+      if (method === "DELETE") {
+        await source.deleteQuickAdd(id);
+        return json({ ok: true, id });
+      }
+    }
+    if (second !== undefined && id === null) {
+      return badRequest("Invalid quick add id");
     }
   }
 

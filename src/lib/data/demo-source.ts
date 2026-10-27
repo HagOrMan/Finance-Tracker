@@ -42,6 +42,8 @@ import type {
   NewDisbursementInput,
   NewReceiptInput,
   NewSubscriptionInput,
+  QuickAdd,
+  QuickAddInput,
   Receipt,
   Subscription,
   UpdateDisbursementInput,
@@ -379,6 +381,50 @@ export class DemoDataSource implements DataSource {
     const row = getDataset().subscriptions.find((s) => s.id === id);
     if (!row) throw new NotFoundError(`Subscription ${id} not found`);
     row.charges_generated = count;
+    commitDemoStore();
+  }
+
+  // -------------------------------------------------------------------------
+  // Quick adds
+  // -------------------------------------------------------------------------
+
+  async loadQuickAdds(): Promise<QuickAdd[]> {
+    return [...getDataset().quickAdds]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(copy);
+  }
+
+  async insertQuickAdd(input: QuickAddInput): Promise<QuickAdd> {
+    const data = getDataset();
+    assertRoom(data.quickAdds.length, "quick adds");
+
+    const stamp = nowStamp();
+    const quickAdd: QuickAdd = {
+      ...input,
+      id: data.nextId.quickAdds,
+      created_at: stamp,
+      updated_at: stamp,
+    };
+
+    data.nextId.quickAdds += 1;
+    data.quickAdds.push(quickAdd);
+    commitDemoStore();
+    return copy(quickAdd);
+  }
+
+  async updateQuickAdd(id: number, input: QuickAddInput): Promise<QuickAdd> {
+    const row = getDataset().quickAdds.find((q) => q.id === id);
+    if (!row) throw new NotFoundError(`Quick add ${id} not found`);
+    Object.assign(row, input, { updated_at: nowStamp() });
+    commitDemoStore();
+    return copy(row);
+  }
+
+  async deleteQuickAdd(id: number): Promise<void> {
+    const data = getDataset();
+    const index = data.quickAdds.findIndex((q) => q.id === id);
+    if (index === -1) throw new NotFoundError(`Quick add ${id} not found`);
+    data.quickAdds.splice(index, 1);
     commitDemoStore();
   }
 }

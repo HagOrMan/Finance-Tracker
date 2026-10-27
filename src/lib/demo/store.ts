@@ -17,7 +17,12 @@
  * Zustand filter store, and for the same reason: the server renders with no
  * `localStorage`, so reading it during render is a hydration mismatch.
  */
-import type { Disbursement, Receipt, Subscription } from "@/lib/data/types";
+import type {
+  Disbursement,
+  QuickAdd,
+  Receipt,
+  Subscription,
+} from "@/lib/data/types";
 import { generateSeed } from "./seed";
 
 /**
@@ -32,7 +37,7 @@ import { generateSeed } from "./seed";
  * Versioned so a shape change self-invalidates instead of crashing the app on
  * a stale blob. Bump on any change to `DemoDataset`.
  */
-export const DEMO_STORAGE_KEY = "finance-tracker-demo:v1";
+export const DEMO_STORAGE_KEY = "finance-tracker-demo:v2";
 
 /**
  * Per-entity row cap.
@@ -51,8 +56,14 @@ export interface DemoDataset {
   receipts: Receipt[];
   disbursements: Disbursement[];
   subscriptions: Subscription[];
+  quickAdds: QuickAdd[];
   /** Monotonic per entity; never reused after a delete, exactly like an identity column. */
-  nextId: { receipts: number; disbursements: number; subscriptions: number };
+  nextId: {
+    receipts: number;
+    disbursements: number;
+    subscriptions: number;
+    quickAdds: number;
+  };
 }
 
 let dataset: DemoDataset | null = null;
@@ -67,11 +78,13 @@ function isDemoDataset(value: unknown): value is DemoDataset {
     Array.isArray(v.receipts) &&
     Array.isArray(v.disbursements) &&
     Array.isArray(v.subscriptions) &&
+    Array.isArray(v.quickAdds) &&
     typeof v.nextId === "object" &&
     v.nextId !== null &&
     typeof v.nextId.receipts === "number" &&
     typeof v.nextId.disbursements === "number" &&
-    typeof v.nextId.subscriptions === "number"
+    typeof v.nextId.subscriptions === "number" &&
+    typeof v.nextId.quickAdds === "number"
   );
 }
 

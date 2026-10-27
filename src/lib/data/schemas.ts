@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { INTERVAL_UNITS } from "./types";
+import { INTERVAL_UNITS, QUICK_ADD_KINDS } from "./types";
 
 const isoDate = z
   .string()
@@ -131,6 +131,50 @@ export const updateSubscriptionSchema = z
   .partial()
   .refine((v) => Object.keys(v).length > 0, "No fields to update");
 
+// ---------------------------------------------------------------------------
+// Quick adds
+//
+// One schema for create AND update: an edit replaces the whole preset. The
+// kind/category pairing is a cross-field rule, and a partial PATCH could only
+// check it by reading the row first — so there is no partial PATCH.
+// ---------------------------------------------------------------------------
+
+/** Blank → null, so `""`, `"  "` and a missing key all mean "not set". */
+const optionalText = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((v) => (v?.trim() ? v.trim() : null));
+
+export const quickAddSchema = z
+  .object({
+    kind: z.enum(QUICK_ADD_KINDS),
+    name: z.string().trim().min(1, "Name is required"),
+    counterparty: z.string().trim().min(1, "Required"),
+    category: optionalText,
+    // A blank number input arrives as `""`, which `z.coerce.number()` would
+    // turn into 0 and reject — but blank is a valid "type it each time".
+    amount: z.preprocess(
+      (v) => (v === "" || v === undefined ? null : v),
+      z.coerce.number().positive("Amount must be greater than 0").nullable(),
+    ),
+    note: optionalText,
+  })
+  .superRefine((v, ctx) => {
+    if (v.kind === "receipt" && !v.category) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["category"],
+        message: "Category is required",
+      });
+    }
+  })
+  // Mirrors `quick_adds_category_matches_kind`, which would otherwise reject a
+  // disbursement preset that kept a category from before its kind was switched.
+  .transform((v) =>
+    v.kind === "disbursement" ? { ...v, category: null } : v,
+  );
+
 // The form needs both ends of the schema. `z.coerce` means what react-hook-form
 // holds while you type (`Input` — a number field's DOM value is a string) is not
 // what the resolver hands to `onSubmit` (`Values` — coerced, defaults applied),
@@ -157,3 +201,6 @@ export type UpdateSubscriptionFormInput = z.input<
 export type UpdateSubscriptionFormValues = z.output<
   typeof updateSubscriptionSchema
 >;
+
+export type QuickAddFormInput = z.input<typeof quickAddSchema>;
+export type QuickAddFormValues = z.output<typeof quickAddSchema>;

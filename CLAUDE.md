@@ -43,7 +43,7 @@ config files stay at the repo root.
 
 ```
 src/
-├── app/          # 11 pages + /api/{receipts,disbursements,subscriptions,reports,cron}
+├── app/          # 12 pages + /api/{receipts,disbursements,subscriptions,quick-adds,reports,cron}
 ├── components/   # ui/ = shadcn primitives, charts/ = Recharts wrappers,
 │                 # report/ = spending-report views, auth/ = sign-in/out
 ├── hooks/        # use-finance-data (react-query), use-category-colors, use-media-query

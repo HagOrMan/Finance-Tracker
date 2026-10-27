@@ -13,6 +13,8 @@ import type {
   NewDisbursementInput,
   NewReceiptInput,
   NewSubscriptionInput,
+  QuickAdd,
+  QuickAddInput,
   Receipt,
   Subscription,
   UpdateDisbursementInput,
@@ -108,11 +110,14 @@ const postJSON = <T,>(url: string, input: unknown) =>
   request<T>(url, { method: "POST", input });
 const patchJSON = <T,>(url: string, input: unknown) =>
   request<T>(url, { method: "PATCH", input });
+const putJSON = <T,>(url: string, input: unknown) =>
+  request<T>(url, { method: "PUT", input });
 const deleteJSON = <T,>(url: string) => request<T>(url, { method: "DELETE" });
 
 const RECEIPTS_KEY = ["merged-receipts"];
 const DISBURSEMENTS_KEY = ["disbursements"];
 const SUBSCRIPTIONS_KEY = ["subscriptions"];
+const QUICK_ADDS_KEY = ["quick-adds"];
 // Prefix, not a full key — matches every period's report at once.
 const REPORTS_KEY_PREFIX = ["report"];
 
@@ -187,20 +192,23 @@ export function useRefreshFinanceData() {
   const queryClient = useQueryClient();
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
-      const [receipts, disbursements, subscriptions] = await Promise.all([
-        fetchJSON<MergedReceipt[]>("/api/receipts?fresh=1"),
-        fetchJSON<Disbursement[]>("/api/disbursements?fresh=1"),
-        fetchJSON<Subscription[]>("/api/subscriptions?fresh=1"),
-      ]);
-      return { receipts, disbursements, subscriptions };
+      const [receipts, disbursements, subscriptions, quickAdds] =
+        await Promise.all([
+          fetchJSON<MergedReceipt[]>("/api/receipts?fresh=1"),
+          fetchJSON<Disbursement[]>("/api/disbursements?fresh=1"),
+          fetchJSON<Subscription[]>("/api/subscriptions?fresh=1"),
+          fetchJSON<QuickAdd[]>("/api/quick-adds?fresh=1"),
+        ]);
+      return { receipts, disbursements, subscriptions, quickAdds };
     },
     // Seeded rather than invalidated: the fetches above already returned the
     // authoritative rows, so re-requesting them would be a second round trip
     // for an answer we're holding.
-    onSuccess: ({ receipts, disbursements, subscriptions }) => {
+    onSuccess: ({ receipts, disbursements, subscriptions, quickAdds }) => {
       queryClient.setQueryData(RECEIPTS_KEY, receipts);
       queryClient.setQueryData(DISBURSEMENTS_KEY, disbursements);
       queryClient.setQueryData(SUBSCRIPTIONS_KEY, subscriptions);
+      queryClient.setQueryData(QUICK_ADDS_KEY, quickAdds);
       // Reports are built server-side from the rows above and can't be seeded
       // from them; the `fresh=1` reads dropped the server entries those are
       // derived from, so a plain invalidate now rebuilds them correctly.
@@ -372,6 +380,47 @@ export function useRunDueCharges() {
     mutationFn: () =>
       postJSON<SubscriptionRunResult>("/api/subscriptions/run-due", {}),
     onSuccess: () => invalidateSubscriptionCharges(queryClient),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Quick adds
+//
+// Presets only — writing one changes no ledger figure, so these invalidate
+// their own key and nothing else.
+// ---------------------------------------------------------------------------
+
+export function useQuickAdds() {
+  return useQuery({
+    queryKey: QUICK_ADDS_KEY,
+    queryFn: () => fetchJSON<QuickAdd[]>("/api/quick-adds"),
+  });
+}
+
+export function useAddQuickAdd() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: QuickAddInput) =>
+      postJSON<QuickAdd>("/api/quick-adds", input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUICK_ADDS_KEY }),
+  });
+}
+
+export function useUpdateQuickAdd() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: QuickAddInput }) =>
+      putJSON<QuickAdd>(`/api/quick-adds/${id}`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUICK_ADDS_KEY }),
+  });
+}
+
+export function useDeleteQuickAdd() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      deleteJSON<{ ok: true; id: number }>(`/api/quick-adds/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUICK_ADDS_KEY }),
   });
 }
 

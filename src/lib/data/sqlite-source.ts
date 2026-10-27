@@ -361,4 +361,25 @@ export class SqliteDataSource implements DataSource {
   async setChargesGenerated(): Promise<never> {
     return this.unsupported();
   }
+
+  // Quick adds — unsupported for the same reason: 004 is Postgres-only too.
+
+  private quickAddsUnsupported(): never {
+    throw new Error(
+      "Quick adds are not supported when DATA_SOURCE=sqlite — that mode is dev-only and its database has no quick_adds table. Use the Supabase source.",
+    );
+  }
+
+  async loadQuickAdds(): Promise<never> {
+    return this.quickAddsUnsupported();
+  }
+  async insertQuickAdd(): Promise<never> {
+    return this.quickAddsUnsupported();
+  }
+  async updateQuickAdd(): Promise<never> {
+    return this.quickAddsUnsupported();
+  }
+  async deleteQuickAdd(): Promise<never> {
+    return this.quickAddsUnsupported();
+  }
 }
