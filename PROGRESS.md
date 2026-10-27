@@ -9,9 +9,8 @@ Current state and open work. **Update this as you go.** Durable "why" belongs in
 
 **Built, deployed, and running against real data.** Every page, the write path,
 stores/entities hygiene, the CRUD tables, subscriptions, and spending reports
-are live. The SQLite→Supabase backfill has run; migrations
-`finance_tracker_schema` through `003` have been applied. **`004_quick_adds.sql`
-has not** — see Open #11.
+are live. The SQLite→Supabase backfill has run; all four migrations in
+`supabase/migrations/` have been applied.
 
 Routes: `/` `/monthly` `/categories` `/savings` `/disbursements` `/reports`
 `/reports/monthly` · `/stores` `/manage` `/subscriptions` `/quick-adds` behind
@@ -20,7 +19,8 @@ the "Manage ▾" menu.
 **Quick adds** are saved presets (receipt or disbursement) shown as a row of
 buttons at the top of each tab in the + sheet. Tapping one fills the form —
 everything but the date — and nothing is written until Add. Invariants are in
-`ARCHITECTURE.md` §5 "Quick adds".
+`ARCHITECTURE.md` §5 "Quick adds". Migration `004` applied, types regenerated,
+and tested by hand: working as intended.
 
 **`/` is the daily breakdown.** The separate Overview page is gone — it was a
 weaker version of the same view, so the page you wanted was never the one you
@@ -168,20 +168,16 @@ wrong — not this one.
       *without* a note still falls back to its name, since a generated row with
       an empty note reads as anonymous in the receipts table. Say so if the
       preference is a literal empty note instead.
-11. **Quick adds — written, never built or run.** To bring it up:
-    - Run `supabase/migrations/004_quick_adds.sql` in the SQL editor **before
-      deploying**, or `/api/quick-adds` 500s and the + sheet's preset row stays
-      empty (the rest of the sheet still works).
-    - Regenerate `src/types/database.ts`. The `quick_adds` entry was written by
-      hand to match the generator's shape; the regenerated file should agree.
-    - `pnpm tsc --noEmit`. The likeliest type errors are in `quickAddSchema`'s
-      preprocess/transform and the `setValue("price", "")` calls in
-      `quick-add-modal.tsx`.
-    - On the phone: a preset with a blank amount should focus the amount field
-      and raise the keypad. iOS only does that for a focus inside the tap's own
-      handler, which this is, but it hasn't been seen.
-    - The demo storage key went `v1` → `v2` for the new `quickAdds` array, so
-      existing demo visitors get a fresh seed once.
+11. **Drawer keyboard fix — written, not yet seen on a phone.** On iOS (Safari
+    and the installed app) the keyboard covered the bottom of any drawer, so
+    low fields (Discount, Note, Reason) couldn't be scrolled above it. vaul's
+    `repositionInputs` is now off and `DrawerContent` in
+    `src/components/ui/drawer.tsx` lifts the sheet by the keyboard's height
+    from `visualViewport` and scrolls the focused field into view. Check by
+    tapping Discount *first* in the + sheet. If the sheet still doesn't move,
+    `visualViewport` isn't reporting the keyboard on that iOS version; the
+    agreed fallback is extra bottom padding in `DrawerBody` while a field is
+    focused, with no measuring.
 
 ## Settled
 

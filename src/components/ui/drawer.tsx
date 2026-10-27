@@ -5,8 +5,124 @@ import { Drawer as DrawerPrimitive } from "vaul";
 
 import { cn } from "@/lib/utils";
 
-function Drawer(props: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />;
+/**
+ * `repositionInputs` off: vaul's own keyboard handling left the sheet where it
+ * was on iOS, with the keyboard covering its bottom and the lower fields
+ * unreachable. `DrawerContent` does that job instead — see `useKeyboardInset`.
+ * Leaving vaul's on as well would have two handlers writing the same styles.
+ */
+function Drawer({
+  repositionInputs = false,
+  ...props
+}: React.ComponentProps<typeof DrawerPrimitive.Root>) {
+  return (
+    <DrawerPrimitive.Root
+      data-slot="drawer"
+      repositionInputs={repositionInputs}
+      {...props}
+    />
+  );
+}
+
+/**
+ * Below this, a gap between the layout and visual viewports is browser chrome
+ * or rounding, not a keyboard — the iOS keyboard is ~300px.
+ */
+const MIN_KEYBOARD_PX = 80;
+
+/** Space kept between a revealed field and the edge of the drawer body. */
+const REVEAL_MARGIN_PX = 16;
+
+function isTextEntry(el: unknown): el is HTMLElement {
+  if (el instanceof HTMLTextAreaElement) return true;
+  if (!(el instanceof HTMLInputElement)) return false;
+  return !["checkbox", "radio", "button", "submit", "reset", "range"].includes(
+    el.type,
+  );
+}
+
+/**
+ * Scrolls the field into view within its `DrawerBody` only.
+ *
+ * Not `scrollIntoView`: that scrolls every scrollable ancestor, including the
+ * page behind the overlay, and on iOS a page scroll pans the visual viewport —
+ * which fires the listener in `useKeyboardInset` again.
+ */
+function revealInDrawerBody(el: HTMLElement) {
+  const body = el.closest<HTMLElement>('[data-slot="drawer-body"]');
+  if (!body) return;
+  const bodyRect = body.getBoundingClientRect();
+  const rect = el.getBoundingClientRect();
+  if (rect.bottom > bodyRect.bottom - REVEAL_MARGIN_PX) {
+    body.scrollTop += rect.bottom - bodyRect.bottom + REVEAL_MARGIN_PX;
+  } else if (rect.top < bodyRect.top + REVEAL_MARGIN_PX) {
+    body.scrollTop -= bodyRect.top + REVEAL_MARGIN_PX - rect.top;
+  }
+}
+
+/**
+ * How far the on-screen keyboard covers the bottom of the layout viewport, and
+ * the visible height left above it — or `null` while no keyboard is up.
+ *
+ * `position: fixed` is laid out against the layout viewport, but the keyboard
+ * shrinks only the *visual* one, and iOS may also pan the visual viewport down
+ * (`offsetTop`) to reach a low field. Both have to come off, which is why this
+ * listens to `scroll` as well as `resize`.
+ */
+function useKeyboardInset(): { inset: number; visibleHeight: number } | null {
+  const [keyboard, setKeyboard] = React.useState<{
+    inset: number;
+    visibleHeight: number;
+  } | null>(null);
+
+  React.useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      // Coalesced to one read per frame: iOS fires a burst of events while the
+      // keyboard animates in.
+      frame = requestAnimationFrame(() => {
+        const inset = window.innerHeight - viewport.height - viewport.offsetTop;
+        setKeyboard((prev) => {
+          if (inset < MIN_KEYBOARD_PX) return prev === null ? prev : null;
+          const next = {
+            inset: Math.round(inset),
+            visibleHeight: Math.round(viewport.height),
+          };
+          return prev &&
+            prev.inset === next.inset &&
+            prev.visibleHeight === next.visibleHeight
+            ? prev
+            : next;
+        });
+      });
+    };
+
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  // Once the sheet has been lifted, bring the focused field above the
+  // keyboard. A frame later so the new `bottom`/`max-height` has been laid out.
+  React.useEffect(() => {
+    if (!keyboard) return;
+    const frame = requestAnimationFrame(() => {
+      const el = document.activeElement;
+      if (isTextEntry(el)) revealInDrawerBody(el);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [keyboard]);
+
+  return keyboard;
 }
 
 function DrawerTrigger(
@@ -46,8 +162,12 @@ function DrawerOverlay({
 function DrawerContent({
   className,
   children,
+  style,
+  onFocus,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Content>) {
+  const keyboard = useKeyboardInset();
+
   return (
     <DrawerPortal>
       <DrawerOverlay />
@@ -65,6 +185,27 @@ function DrawerContent({
           "data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-3/4 data-[vaul-drawer-direction=left]:max-w-sm data-[vaul-drawer-direction=left]:rounded-r-lg",
           className,
         )}
+        // Inline so it beats the `max-h-[90svh]` class while the keyboard is
+        // up: `svh` is measured without the keyboard, so 90svh would run
+        // straight back underneath it.
+        style={
+          keyboard
+            ? {
+                ...style,
+                bottom: keyboard.inset,
+                maxHeight: Math.round(keyboard.visibleHeight * 0.9),
+              }
+            : style
+        }
+        onFocus={(event) => {
+          onFocus?.(event);
+          // Moving between fields with the keyboard already up changes no
+          // viewport size, so `useKeyboardInset` won't fire for it.
+          if (keyboard && isTextEntry(event.target)) {
+            const target = event.target;
+            requestAnimationFrame(() => revealInDrawerBody(target));
+          }
+        }}
         {...props}
       >
         <div className="bg-muted mx-auto mt-4 hidden h-2 w-25 shrink-0 rounded-full group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
